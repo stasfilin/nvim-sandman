@@ -330,18 +330,29 @@ end
 function M.stats_summary()
   local t = state.stats
   local lines = {
-    string.format('nvim-sandman stats: attempts=%d blocked=%d allowed=%d', t.total.attempts, t.total.blocked, t.total.allowed),
+    string.format(
+      'nvim-sandman stats: attempts=%d blocked=%d allowed=%d',
+      t.total.attempts,
+      t.total.blocked,
+      t.total.allowed
+    ),
   }
 
   local plugins = {}
   for name, s in pairs(t.by_plugin) do
-    table.insert(plugins, { name = name, attempts = s.attempts, blocked = s.blocked, allowed = s.allowed })
+    table.insert(
+      plugins,
+      { name = name, attempts = s.attempts, blocked = s.blocked, allowed = s.allowed }
+    )
   end
   table.sort(plugins, function(a, b) return a.attempts > b.attempts end)
 
   for i = 1, math.min(#plugins, 10) do
     local p = plugins[i]
-    table.insert(lines, string.format('plugin %s: attempts=%d blocked=%d allowed=%d', p.name, p.attempts, p.blocked, p.allowed))
+    table.insert(
+      lines,
+      string.format('plugin %s: attempts=%d blocked=%d allowed=%d', p.name, p.attempts, p.blocked, p.allowed)
+    )
   end
 
   return table.concat(lines, '\\n')
