@@ -37,12 +37,13 @@ from the call stack.
 ```
 
 ## Commands
-- `:NetworkBlock` — block network for all plugins.
-- `:NetworkUnblock` — disable blocking.
-- `:NetworkBlockOnly <p1> <p2>` — block only listed plugins.
-- `:NetworkAllowOnly <p1> <p2>` — allow network only for listed plugins.
-- `:NetworkStats` — show summary stats.
-- `:NetworkStatsReset` — reset stats.
+- `:Sandman block` — block network for all plugins.
+- `:Sandman unblock` — disable blocking.
+- `:Sandman block-only <p1> <p2>` — block only listed plugins.
+- `:Sandman allow-only <p1> <p2>` — allow network only for listed plugins.
+- `:Sandman stats` — show summary stats.
+- `:Sandman stats-reset` — reset stats.
+- `:Sandman temp-net [ms]` — temporarily enable network for N ms (default 60000).
 
 ## Lua API
 ```lua
@@ -54,6 +55,7 @@ nb.allow_only({ 'plenary.nvim' })
 print(vim.inspect(nb.stats()))
 nb.stats_reset()
 print(nb.stats_summary())
+nb.temp_net(30000)
 ```
 
 ## Configuration
@@ -63,6 +65,8 @@ require('nvim_sandman').setup({
   mode = 'block_all', -- block_all | blocklist | allowlist
   allow = { 'plenary.nvim' },
   block = { 'nvim-treesitter' },
+  env_block = true, -- set HTTP(S)/ALL proxy env vars to an invalid address when blocked
+  temp_net_ms = 60000, -- default duration for :Sandman temp-net
   commands = true, -- create commands
   on_block = function(info)
     -- info.action, info.plugin, info.message
@@ -76,7 +80,7 @@ require('nvim_sandman').setup({
 
 ## Stats
 Stats are collected per session in memory only. You can inspect them via
-`nb.stats()` or `:NetworkStats`. A summary includes totals plus the top plugins
+`nb.stats()` or `:Sandman stats`. A summary includes totals plus the top plugins
 by attempts.
 
 Example output:
@@ -93,12 +97,14 @@ plugin nvim-treesitter: attempts=2 blocked=2 allowed=0
 
 ## Tips
 - Start with `block_all`, then add trusted plugins to `allow`.
-- Use `:NetworkStats` to discover which plugins are attempting network access.
+- Use `:Sandman stats` to discover which plugins are attempting network access.
 
 ## Limitations
 - This is not a system firewall. It only blocks calls inside the Neovim process.
 - If a plugin uses an external process/daemon outside Neovim, it may bypass this.
 - Stats are stored in memory only and reset when Neovim restarts.
+- Blocking after a long-lived background process is already running may not stop it.
+  Restart Neovim or stop that process to fully enforce blocking.
 
 ## Plugin detection
 The plugin name is detected from the call stack file path. Supported directories:
