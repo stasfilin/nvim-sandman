@@ -63,6 +63,7 @@ require('nvim_sandman').setup({
   mode = 'block_all', -- block_all | blocklist | allowlist
   allow = { 'plenary.nvim' },
   block = { 'nvim-treesitter' },
+  env_block = true, -- set HTTP(S)/ALL proxy env vars to an invalid address when blocked
   commands = true, -- create commands
   on_block = function(info)
     -- info.action, info.plugin, info.message
@@ -99,6 +100,8 @@ plugin nvim-treesitter: attempts=2 blocked=2 allowed=0
 - This is not a system firewall. It only blocks calls inside the Neovim process.
 - If a plugin uses an external process/daemon outside Neovim, it may bypass this.
 - Stats are stored in memory only and reset when Neovim restarts.
+- Blocking after a long-lived background process is already running may not stop it.
+  Restart Neovim or stop that process to fully enforce blocking.
 
 ## Plugin detection
 The plugin name is detected from the call stack file path. Supported directories:

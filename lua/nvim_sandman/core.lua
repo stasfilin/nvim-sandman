@@ -10,6 +10,8 @@ local state = {
   installed = false,
   on_block = nil,
   detect_plugin = nil,
+  env_block = true,
+  env_backup = nil,
   stats = {
     total = { attempts = 0, blocked = 0, allowed = 0 },
     by_plugin = {},
@@ -35,18 +37,58 @@ local function detect_plugin_default()
     local src = info.source
     if type(src) == 'string' and src:sub(1, 1) == '@' then
       local path = src:sub(2)
-      local name =
-        path:match('/site/pack/[^/]+/start/([^/]+)/') or
-        path:match('/site/pack/[^/]+/opt/([^/]+)/') or
-        path:match('/pack/packer/start/([^/]+)/') or
-        path:match('/pack/packer/opt/([^/]+)/') or
-        path:match('/lazy/([^/]+)/') or
-        path:match('/plugged/([^/]+)/') or
-        path:match('/bundle/([^/]+)/')
-      if name then return name end
+      if not path:match('/nvim%-sandman/') then
+        local name =
+          path:match('/site/pack/[^/]+/start/([^/]+)/') or
+          path:match('/site/pack/[^/]+/opt/([^/]+)/') or
+          path:match('/pack/packer/start/([^/]+)/') or
+          path:match('/pack/packer/opt/([^/]+)/') or
+          path:match('/lazy/([^/]+)/') or
+          path:match('/plugged/([^/]+)/') or
+          path:match('/bundle/([^/]+)/')
+        if name then return name end
+      end
     end
   end
   return nil
+end
+
+local function set_env_blocked(blocked)
+  if not state.env_block then
+    return
+  end
+
+  if blocked then
+    if not state.env_backup then
+      state.env_backup = {
+        http_proxy = vim.env.http_proxy,
+        https_proxy = vim.env.https_proxy,
+        HTTP_PROXY = vim.env.HTTP_PROXY,
+        HTTPS_PROXY = vim.env.HTTPS_PROXY,
+        ALL_PROXY = vim.env.ALL_PROXY,
+        all_proxy = vim.env.all_proxy,
+        NO_PROXY = vim.env.NO_PROXY,
+        no_proxy = vim.env.no_proxy,
+      }
+    end
+
+    local invalid = '127.0.0.1:1'
+    vim.env.http_proxy = invalid
+    vim.env.https_proxy = invalid
+    vim.env.HTTP_PROXY = invalid
+    vim.env.HTTPS_PROXY = invalid
+    vim.env.ALL_PROXY = invalid
+    vim.env.all_proxy = invalid
+    vim.env.NO_PROXY = nil
+    vim.env.no_proxy = nil
+  else
+    if state.env_backup then
+      for k, v in pairs(state.env_backup) do
+        vim.env[k] = v
+      end
+      state.env_backup = nil
+    end
+  end
 end
 
 local function current_plugin()
@@ -252,6 +294,9 @@ function M.setup(opts)
   if opts.detect_plugin then
     state.detect_plugin = opts.detect_plugin
   end
+  if opts.env_block ~= nil then
+    state.env_block = opts.env_block == true
+  end
   if opts.stats ~= nil then
     if opts.stats == false then
       state.stats = {
@@ -290,6 +335,8 @@ function M.setup(opts)
       M.stats_reset()
     end, {})
   end
+
+  set_env_blocked(state.enabled)
 end
 
 function M.block_all()
@@ -297,22 +344,26 @@ function M.block_all()
   state.mode = 'block_all'
   state.allow = {}
   state.block = {}
+  set_env_blocked(true)
 end
 
 function M.unblock()
   state.enabled = false
+  set_env_blocked(false)
 end
 
 function M.block_only(list)
   state.enabled = true
   state.mode = 'blocklist'
   state.block = set_from_list(list)
+  set_env_blocked(true)
 end
 
 function M.allow_only(list)
   state.enabled = true
   state.mode = 'allowlist'
   state.allow = set_from_list(list)
+  set_env_blocked(true)
 end
 
 function M.stats()
