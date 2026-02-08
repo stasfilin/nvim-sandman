@@ -12,6 +12,7 @@ local state = {
   detect_plugin = nil,
   env_block = true,
   env_backup = nil,
+  temp_net_ms = 60000,
   stats = {
     total = { attempts = 0, blocked = 0, allowed = 0 },
     by_plugin = {},
@@ -297,6 +298,9 @@ function M.setup(opts)
   if opts.env_block ~= nil then
     state.env_block = opts.env_block == true
   end
+  if opts.temp_net_ms ~= nil then
+    state.temp_net_ms = tonumber(opts.temp_net_ms) or state.temp_net_ms
+  end
   if opts.stats ~= nil then
     if opts.stats == false then
       state.stats = {
@@ -308,32 +312,66 @@ function M.setup(opts)
   end
 
   if opts.commands ~= false then
-    vim.api.nvim_create_user_command('NetworkBlock', function()
-      M.block_all()
-    end, {})
+    vim.api.nvim_create_user_command('Sandman', function(cmd)
+      local sub = cmd.fargs[1]
+      if sub == 'block' then
+        M.block_all()
+        return
+      end
+      if sub == 'unblock' then
+        M.unblock()
+        return
+      end
+      if sub == 'block-only' then
+        M.block_only(vim.list_slice(cmd.fargs, 2))
+        return
+      end
+      if sub == 'allow-only' then
+        M.allow_only(vim.list_slice(cmd.fargs, 2))
+        return
+      end
+      if sub == 'stats' then
+        local summary = M.stats_summary()
+        vim.schedule(function()
+          vim.notify(summary, vim.log.levels.INFO)
+        end)
+        return
+      end
+      if sub == 'stats-reset' then
+        M.stats_reset()
+        return
+      end
+      if sub == 'temp-net' then
+        local ms = tonumber(cmd.fargs[2]) or state.temp_net_ms
+        M.temp_net(ms)
+        return
+      end
 
-    vim.api.nvim_create_user_command('NetworkUnblock', function()
-      M.unblock()
-    end, {})
-
-    vim.api.nvim_create_user_command('NetworkBlockOnly', function(cmd)
-      M.block_only(cmd.fargs)
-    end, { nargs = '*', complete = 'file' })
-
-    vim.api.nvim_create_user_command('NetworkAllowOnly', function(cmd)
-      M.allow_only(cmd.fargs)
-    end, { nargs = '*', complete = 'file' })
-
-    vim.api.nvim_create_user_command('NetworkStats', function()
-      local summary = M.stats_summary()
       vim.schedule(function()
-        vim.notify(summary, vim.log.levels.INFO)
+        vim.notify(
+          'nvim-sandman: unknown subcommand. Use :Sandman block|unblock|block-only|allow-only|stats|stats-reset|temp-net [ms]',
+          vim.log.levels.WARN
+        )
       end)
-    end, {})
-
-    vim.api.nvim_create_user_command('NetworkStatsReset', function()
-      M.stats_reset()
-    end, {})
+    end, {
+      nargs = '+',
+      complete = function(_, line)
+        local subs = {
+          'block',
+          'unblock',
+          'block-only',
+          'allow-only',
+          'stats',
+          'stats-reset',
+          'temp-net',
+        }
+        local args = vim.split(line, '%s+')
+        if #args <= 2 then
+          return subs
+        end
+        return {}
+      end,
+    })
   end
 
   set_env_blocked(state.enabled)
@@ -364,6 +402,29 @@ function M.allow_only(list)
   state.mode = 'allowlist'
   state.allow = set_from_list(list)
   set_env_blocked(true)
+end
+
+function M.temp_net(ms)
+  local duration = tonumber(ms) or state.temp_net_ms
+  if duration <= 0 then
+    return
+  end
+
+  local was_enabled = state.enabled
+  M.unblock()
+
+  vim.schedule(function()
+    vim.notify(string.format('nvim-sandman: network ON for %d ms', duration), vim.log.levels.INFO)
+  end)
+
+  vim.defer_fn(function()
+    if was_enabled then
+      M.block_all()
+    end
+    vim.schedule(function()
+      vim.notify('nvim-sandman: network OFF', vim.log.levels.INFO)
+    end)
+  end, duration)
 end
 
 function M.stats()

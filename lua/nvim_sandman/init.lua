@@ -34,4 +34,8 @@ function M.stats_summary()
   return core.stats_summary()
 end
 
+function M.temp_net(ms)
+  core.temp_net(ms)
+end
+
 return M
