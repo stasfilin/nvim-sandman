@@ -1,3 +1,13 @@
+## [1.0.1](https://github.com/stasfilin/nvim-sandman/compare/v1.0.0...v1.0.1) (2026-02-08)
+
+
+### Bug Fixes
+
+* adding env clear for unblock ([2af0a0c](https://github.com/stasfilin/nvim-sandman/commit/2af0a0c2b1c3d25100f63530e74bb4c8949b9b6e))
+* change commands name ([de0ab7c](https://github.com/stasfilin/nvim-sandman/commit/de0ab7c80641ced1f405a9beec43c9e2a8ee3e40))
+* change logic of detecting plugins ([858d0a0](https://github.com/stasfilin/nvim-sandman/commit/858d0a047eb3efa47be80f0a8127968c1e583273))
+* change print for stats ([6e3a9f2](https://github.com/stasfilin/nvim-sandman/commit/6e3a9f23dfbaeed26c195dec98f224788f9df129))
+
 # 1.0.0 (2026-02-08)
 
 
