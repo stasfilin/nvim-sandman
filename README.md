@@ -36,6 +36,23 @@ from the call stack.
 }
 ```
 
+## Quickstart
+```lua
+require('nvim_sandman').setup({
+  enabled = true,
+  mode = 'block_all',
+  allow = { 'lazy.nvim' },
+})
+```
+
+Common flows:
+- Block everything (default), then allow a trusted plugin:
+  `:Sandman allow-only lazy.nvim`
+- Temporarily enable network for 30 seconds:
+  `:Sandman temp-net 30000`
+- See what tried to reach the network:
+  `:Sandman stats`
+
 ## Commands
 - `:Sandman block` — block network for all plugins.
 - `:Sandman unblock` — disable blocking.
@@ -95,6 +112,19 @@ plugin nvim-treesitter: attempts=2 blocked=2 allowed=0
 - `blocklist`: only plugins in `block` are blocked.
 - `allowlist`: everything is blocked, except plugins in `allow`.
 
+## FAQ
+**Will this block curl/wget/etc started outside Neovim?**  
+No. This only intercepts network-related calls made inside the Neovim process.
+
+**A plugin already started a background process. Will blocking stop it?**  
+Not necessarily. Restart Neovim or stop that process to fully enforce blocking.
+
+**Can I use it only for a single plugin?**  
+Yes. Use `blocklist` and set `block` to that plugin, or `allowlist` and only allow a small set.
+
+**How do I temporarily allow network?**  
+Use `:Sandman temp-net [ms]`. It enables network for the given duration (default `60000` ms).
+
 ## Tips
 - Start with `block_all`, then add trusted plugins to `allow`.
 - Use `:Sandman stats` to discover which plugins are attempting network access.
@@ -110,5 +140,10 @@ plugin nvim-treesitter: attempts=2 blocked=2 allowed=0
 The plugin name is detected from the call stack file path. Supported directories:
 `site/pack/.../start`, `lazy/`, `plugged/`, `bundle/`.
 
+## Contributing
+Issues and PRs are welcome. Please keep changes focused and include a short description
+of the behavior you expect. If your change affects behavior, add or update a test
+if applicable.
+
 ## License
-MIT
+Apache License 2.0
