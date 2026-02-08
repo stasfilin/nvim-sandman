@@ -362,10 +362,10 @@ function M.setup(opts)
       end
 
       vim.schedule(function()
-        vim.notify(
-          'nvim-sandman: unknown subcommand. Use :Sandman block|unblock|block-only|allow-only|stats|stats-reset|env-clear|temp-net [ms]',
-          vim.log.levels.WARN
-        )
+        local msg =
+          'nvim-sandman: unknown subcommand. Use :Sandman ' ..
+          'block|unblock|block-only|allow-only|stats|stats-reset|env-clear|temp-net [ms]'
+        vim.notify(msg, vim.log.levels.WARN)
       end)
     end, {
       nargs = '+',
@@ -487,7 +487,7 @@ function M.stats_summary()
     )
   end
 
-  return table.concat(lines, '\\n')
+  return table.concat(lines, '\n')
 end
 
 return M
