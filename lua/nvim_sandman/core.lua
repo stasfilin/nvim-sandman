@@ -88,6 +88,16 @@ local function set_env_blocked(blocked)
         vim.env[k] = v
       end
       state.env_backup = nil
+    else
+      -- Clear any existing proxy vars if no backup was captured
+      vim.env.http_proxy = nil
+      vim.env.https_proxy = nil
+      vim.env.HTTP_PROXY = nil
+      vim.env.HTTPS_PROXY = nil
+      vim.env.ALL_PROXY = nil
+      vim.env.all_proxy = nil
+      vim.env.NO_PROXY = nil
+      vim.env.no_proxy = nil
     end
   end
 end
@@ -341,6 +351,10 @@ function M.setup(opts)
         M.stats_reset()
         return
       end
+      if sub == 'env-clear' then
+        M.env_clear()
+        return
+      end
       if sub == 'temp-net' then
         local ms = tonumber(cmd.fargs[2]) or state.temp_net_ms
         M.temp_net(ms)
@@ -349,7 +363,7 @@ function M.setup(opts)
 
       vim.schedule(function()
         vim.notify(
-          'nvim-sandman: unknown subcommand. Use :Sandman block|unblock|block-only|allow-only|stats|stats-reset|temp-net [ms]',
+          'nvim-sandman: unknown subcommand. Use :Sandman block|unblock|block-only|allow-only|stats|stats-reset|env-clear|temp-net [ms]',
           vim.log.levels.WARN
         )
       end)
@@ -363,6 +377,7 @@ function M.setup(opts)
           'allow-only',
           'stats',
           'stats-reset',
+          'env-clear',
           'temp-net',
         }
         local args = vim.split(line, '%s+')
@@ -387,7 +402,7 @@ end
 
 function M.unblock()
   state.enabled = false
-  set_env_blocked(false)
+  M.env_clear()
 end
 
 function M.block_only(list)
@@ -402,6 +417,11 @@ function M.allow_only(list)
   state.mode = 'allowlist'
   state.allow = set_from_list(list)
   set_env_blocked(true)
+end
+
+function M.env_clear()
+  state.env_backup = nil
+  set_env_blocked(false)
 end
 
 function M.temp_net(ms)

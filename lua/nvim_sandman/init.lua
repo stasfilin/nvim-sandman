@@ -38,4 +38,8 @@ function M.temp_net(ms)
   core.temp_net(ms)
 end
 
+function M.env_clear()
+  core.env_clear()
+end
+
 return M
