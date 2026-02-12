@@ -7,6 +7,7 @@ local state = {
   mode = 'block_all', -- block_all | blocklist | allowlist
   allow = {},
   block = {},
+  ignore_notifications = {},
   installed = false,
   on_block = nil,
   detect_plugin = nil,
@@ -28,6 +29,38 @@ local function set_from_list(list)
     end
   end
   return t
+end
+
+local function set_from_list_lower(list)
+  local t = {}
+  for _, v in ipairs(list) do
+    if type(v) == 'string' and v ~= '' then
+      t[v:lower()] = true
+    end
+  end
+  return t
+end
+
+local function ignored_notification_for(plugin)
+  plugin = plugin or 'unknown'
+  local name = plugin:lower()
+
+  if state.ignore_notifications[name] then
+    return true
+  end
+
+  if name:sub(-5) == '.nvim' then
+    local short = name:sub(1, -6)
+    if state.ignore_notifications[short] then
+      return true
+    end
+  else
+    if state.ignore_notifications[name .. '.nvim'] then
+      return true
+    end
+  end
+
+  return false
 end
 
 local function detect_plugin_default()
@@ -159,6 +192,9 @@ end
 
 local function on_block(action, plugin)
   plugin = plugin or 'unknown'
+  if ignored_notification_for(plugin) then
+    return
+  end
   local msg = string.format('nvim-sandman: blocked %s from %s', action, plugin)
   if type(state.on_block) == 'function' then
     pcall(state.on_block, { action = action, plugin = plugin, message = msg })
@@ -298,6 +334,9 @@ function M.setup(opts)
   end
   if opts.block then
     state.block = set_from_list(opts.block)
+  end
+  if opts.ignore_notifications then
+    state.ignore_notifications = set_from_list_lower(opts.ignore_notifications)
   end
   if opts.on_block then
     state.on_block = opts.on_block

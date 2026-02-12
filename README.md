@@ -42,6 +42,7 @@ require('nvim_sandman').setup({
   enabled = true,
   mode = 'block_all',
   allow = { 'lazy.nvim' },
+  ignore_notifications = { 'nvim-treesitter', 'mason.nvim' },
 })
 ```
 
@@ -82,6 +83,7 @@ require('nvim_sandman').setup({
   mode = 'block_all', -- block_all | blocklist | allowlist
   allow = { 'plenary.nvim' },
   block = { 'nvim-treesitter' },
+  ignore_notifications = { 'nvim-treesitter' }, -- suppress blocked notifications for listed plugins
   env_block = true, -- set HTTP(S)/ALL proxy env vars to an invalid address when blocked
   temp_net_ms = 60000, -- default duration for :Sandman temp-net
   commands = true, -- create commands
@@ -94,6 +96,11 @@ require('nvim_sandman').setup({
   end,
 })
 ```
+
+`ignore_notifications` matching is case-insensitive and accepts both `plugin` and
+`plugin.nvim` forms (for example, `gitsigns` or `gitsigns.nvim`).
+For ignored plugins, both built-in notifications and `on_block` callback execution
+are suppressed.
 
 ## Stats
 Stats are collected per session in memory only. You can inspect them via
