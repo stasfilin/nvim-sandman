@@ -1,3 +1,11 @@
+## [1.0.2](https://github.com/stasfilin/nvim-sandman/compare/v1.0.1...v1.0.2) (2026-02-12)
+
+
+### Bug Fixes
+
+* adding ignore-notifications ([18720f1](https://github.com/stasfilin/nvim-sandman/commit/18720f1178006f6e5a8540707e0b2f4e2ecb065e))
+* adding more if conditions ([734379c](https://github.com/stasfilin/nvim-sandman/commit/734379cb03e98cbff189ec93a55d6a9ad98279c2))
+
 ## [1.0.1](https://github.com/stasfilin/nvim-sandman/compare/v1.0.0...v1.0.1) (2026-02-08)
 
 
