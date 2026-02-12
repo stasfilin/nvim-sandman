@@ -97,6 +97,11 @@ require('nvim_sandman').setup({
 })
 ```
 
+`ignore_notifications` matching is case-insensitive and accepts both `plugin` and
+`plugin.nvim` forms (for example, `gitsigns` or `gitsigns.nvim`).
+For ignored plugins, both built-in notifications and `on_block` callback execution
+are suppressed.
+
 ## Stats
 Stats are collected per session in memory only. You can inspect them via
 `nb.stats()` or `:Sandman stats`. A summary includes totals plus the top plugins
