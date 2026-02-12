@@ -7,6 +7,7 @@ local state = {
   mode = 'block_all', -- block_all | blocklist | allowlist
   allow = {},
   block = {},
+  ignore_notifications = {},
   installed = false,
   on_block = nil,
   detect_plugin = nil,
@@ -159,10 +160,14 @@ end
 
 local function on_block(action, plugin)
   plugin = plugin or 'unknown'
+  local ignore_notification = state.ignore_notifications[plugin]
   local msg = string.format('nvim-sandman: blocked %s from %s', action, plugin)
   if type(state.on_block) == 'function' then
     pcall(state.on_block, { action = action, plugin = plugin, message = msg })
   else
+    if ignore_notification then
+      return
+    end
     vim.schedule(function()
       vim.notify(msg, vim.log.levels.WARN)
     end)
@@ -298,6 +303,9 @@ function M.setup(opts)
   end
   if opts.block then
     state.block = set_from_list(opts.block)
+  end
+  if opts.ignore_notifications then
+    state.ignore_notifications = set_from_list(opts.ignore_notifications)
   end
   if opts.on_block then
     state.on_block = opts.on_block
