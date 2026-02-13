@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/stasfilin/nvim-sandman/compare/v1.0.2...v1.0.3) (2026-02-13)
+
+
+### Bug Fixes
+
+* allowed plugins do not have access to the internet ([a260d50](https://github.com/stasfilin/nvim-sandman/commit/a260d5028e7f36a421c7cc367ee931e6240e8c1c))
+
 ## [1.0.2](https://github.com/stasfilin/nvim-sandman/compare/v1.0.1...v1.0.2) (2026-02-12)
 
 
