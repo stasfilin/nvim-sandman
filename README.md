@@ -84,7 +84,7 @@ require('nvim_sandman').setup({
   allow = { 'plenary.nvim' },
   block = { 'nvim-treesitter' },
   ignore_notifications = { 'nvim-treesitter' }, -- suppress blocked notifications for listed plugins
-  env_block = true, -- set HTTP(S)/ALL proxy env vars to an invalid address when blocked
+  env_block = true, -- strict block_all: poison HTTP(S)/ALL proxy env vars process-wide
   temp_net_ms = 60000, -- default duration for :Sandman temp-net
   commands = true, -- create commands
   on_block = function(info)
@@ -119,6 +119,13 @@ plugin nvim-treesitter: attempts=2 blocked=2 allowed=0
 - `blocklist`: only plugins in `block` are blocked.
 - `allowlist`: everything is blocked, except plugins in `allow`.
 
+`env_block` note:
+- Proxy env vars are process-wide, so they cannot be applied per plugin.
+- In strict `block_all`, proxy env vars are poisoned process-wide for hard blocking.
+- For plugins listed in `allow`, wrapped calls temporarily restore original proxy env
+  values only for that call, then restore the global lock.
+- In `blocklist` and `allowlist`, Sandman relies on call interception only.
+
 ## FAQ
 **Will this block curl/wget/etc started outside Neovim?**  
 No. This only intercepts network-related calls made inside the Neovim process.
@@ -151,6 +158,12 @@ The plugin name is detected from the call stack file path. Supported directories
 Issues and PRs are welcome. Please keep changes focused and include a short description
 of the behavior you expect. If your change affects behavior, add or update a test
 if applicable.
+
+## Testing
+- Run `npm test` (uses `luajit tests/run.lua .`).
+- Current suite focuses on `env_block` behavior across modes, including
+  strict `block_all + allow` to ensure allowed plugins can pass while global
+  proxy lock remains active.
 
 ## License
 Apache License 2.0

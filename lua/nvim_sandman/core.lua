@@ -21,11 +21,35 @@ local state = {
   },
 }
 
+local PROXY_ENV_KEYS = {
+  'http_proxy',
+  'https_proxy',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY',
+  'all_proxy',
+  'NO_PROXY',
+  'no_proxy',
+}
+
+local function pack(...)
+  return { n = select('#', ...), ... }
+end
+
+local function unpack_values(t, i, j)
+  i = i or 1
+  j = j or t.n or #t
+  if i > j then
+    return
+  end
+  return t[i], unpack_values(t, i + 1, j)
+end
+
 local function set_from_list(list)
   local t = {}
   for _, v in ipairs(list) do
     if type(v) == 'string' and v ~= '' then
-      t[v] = true
+      t[v:lower()] = true
     end
   end
   return t
@@ -56,6 +80,30 @@ local function ignored_notification_for(plugin)
     end
   else
     if state.ignore_notifications[name .. '.nvim'] then
+      return true
+    end
+  end
+
+  return false
+end
+
+local function set_contains_plugin(set, plugin)
+  if not plugin then
+    return false
+  end
+
+  local name = plugin:lower()
+  if set[name] then
+    return true
+  end
+
+  if name:sub(-5) == '.nvim' or name:sub(-4) == '.vim' then
+    local short = name:gsub('%.nvim$', ''):gsub('%.vim$', '')
+    if set[short] then
+      return true
+    end
+  else
+    if set[name .. '.nvim'] or set[name .. '.vim'] then
       return true
     end
   end
@@ -94,16 +142,10 @@ local function set_env_blocked(blocked)
 
   if blocked then
     if not state.env_backup then
-      state.env_backup = {
-        http_proxy = vim.env.http_proxy,
-        https_proxy = vim.env.https_proxy,
-        HTTP_PROXY = vim.env.HTTP_PROXY,
-        HTTPS_PROXY = vim.env.HTTPS_PROXY,
-        ALL_PROXY = vim.env.ALL_PROXY,
-        all_proxy = vim.env.all_proxy,
-        NO_PROXY = vim.env.NO_PROXY,
-        no_proxy = vim.env.no_proxy,
-      }
+      state.env_backup = {}
+      for _, k in ipairs(PROXY_ENV_KEYS) do
+        state.env_backup[k] = vim.env[k]
+      end
     end
 
     local invalid = '127.0.0.1:1'
@@ -117,22 +159,55 @@ local function set_env_blocked(blocked)
     vim.env.no_proxy = nil
   else
     if state.env_backup then
-      for k, v in pairs(state.env_backup) do
-        vim.env[k] = v
+      for _, k in ipairs(PROXY_ENV_KEYS) do
+        vim.env[k] = state.env_backup[k]
       end
       state.env_backup = nil
     else
       -- Clear any existing proxy vars if no backup was captured
-      vim.env.http_proxy = nil
-      vim.env.https_proxy = nil
-      vim.env.HTTP_PROXY = nil
-      vim.env.HTTPS_PROXY = nil
-      vim.env.ALL_PROXY = nil
-      vim.env.all_proxy = nil
-      vim.env.NO_PROXY = nil
-      vim.env.no_proxy = nil
+      for _, k in ipairs(PROXY_ENV_KEYS) do
+        vim.env[k] = nil
+      end
     end
   end
+end
+
+local function should_block_env()
+  if not state.env_block or not state.enabled then
+    return false
+  end
+
+  -- Keep process-wide proxy lock for strict block_all mode.
+  -- Allowed plugins can get per-call env restoration in wrappers.
+  return state.mode == 'block_all'
+end
+
+local function refresh_env_block()
+  set_env_blocked(should_block_env())
+end
+
+local function with_unblocked_env(fn)
+  if not should_block_env() or not state.env_backup then
+    return fn()
+  end
+
+  local poisoned = {}
+  for _, k in ipairs(PROXY_ENV_KEYS) do
+    poisoned[k] = vim.env[k]
+    vim.env[k] = state.env_backup[k]
+  end
+
+  local result = pack(pcall(fn))
+
+  for _, k in ipairs(PROXY_ENV_KEYS) do
+    vim.env[k] = poisoned[k]
+  end
+
+  if not result[1] then
+    error(result[2])
+  end
+
+  return unpack_values(result, 2, result.n)
 end
 
 local function current_plugin()
@@ -147,17 +222,17 @@ local function is_blocked_for(plugin)
   if not state.enabled then return false end
 
   if state.mode == 'block_all' then
-    if plugin and state.allow[plugin] then return false end
+    if set_contains_plugin(state.allow, plugin) then return false end
     return true
   end
 
   if state.mode == 'blocklist' then
-    if plugin and state.block[plugin] then return true end
+    if set_contains_plugin(state.block, plugin) then return true end
     return false
   end
 
   if state.mode == 'allowlist' then
-    if plugin and state.allow[plugin] then return false end
+    if set_contains_plugin(state.allow, plugin) then return false end
     return true
   end
 
@@ -211,9 +286,9 @@ local function guard(action, fallback)
   record_stats(action, plugin, blocked)
   if blocked then
     on_block(action, plugin)
-    return fallback
+    return true, fallback
   end
-  return nil
+  return false, plugin
 end
 
 local originals = {}
@@ -224,11 +299,14 @@ local function wrap_function(owner, name, action, fallback)
   if originals[owner][name] then return end
   originals[owner][name] = owner[name]
   owner[name] = function(...)
-    local blocked = guard(action, fallback)
-    if blocked ~= nil then
-      return blocked
+    local args = pack(...)
+    local blocked, payload = guard(action, fallback)
+    if blocked then
+      return payload
     end
-    return originals[owner][name](...)
+    return with_unblocked_env(function()
+      return originals[owner][name](unpack_values(args, 1, args.n))
+    end)
   end
 end
 
@@ -243,19 +321,23 @@ local function wrap_uv_handle(handle, kind)
       if key == 'connect' and kind == 'tcp' then
         return function(_, host, port, cb)
           local blocked = guard('tcp_connect', nil)
-          if blocked ~= nil then
+          if blocked then
             return
           end
-          return handle:connect(host, port, cb)
+          return with_unblocked_env(function()
+            return handle:connect(host, port, cb)
+          end)
         end
       end
       if key == 'send' and kind == 'udp' then
         return function(_, data, host, port, cb)
           local blocked = guard('udp_send', nil)
-          if blocked ~= nil then
+          if blocked then
             return
           end
-          return handle:send(data, host, port, cb)
+          return with_unblocked_env(function()
+            return handle:send(data, host, port, cb)
+          end)
         end
       end
 
@@ -278,6 +360,38 @@ local function wrap_uv_handle(handle, kind)
   return setmetatable(proxy, mt)
 end
 
+local function install_uv_wrappers(uvlib)
+  if not uvlib then
+    return
+  end
+
+  wrap_function(uvlib, 'spawn', 'uv.spawn', nil)
+  wrap_function(uvlib, 'tcp_connect', 'uv.tcp_connect', nil)
+  wrap_function(uvlib, 'udp_send', 'uv.udp_send', nil)
+
+  if type(uvlib.new_tcp) == 'function' then
+    if originals[uvlib] == nil then originals[uvlib] = {} end
+    if not originals[uvlib].new_tcp then
+      originals[uvlib].new_tcp = uvlib.new_tcp
+      uvlib.new_tcp = function(...)
+        local h = originals[uvlib].new_tcp(...)
+        return wrap_uv_handle(h, 'tcp')
+      end
+    end
+  end
+
+  if type(uvlib.new_udp) == 'function' then
+    if originals[uvlib] == nil then originals[uvlib] = {} end
+    if not originals[uvlib].new_udp then
+      originals[uvlib].new_udp = uvlib.new_udp
+      uvlib.new_udp = function(...)
+        local h = originals[uvlib].new_udp(...)
+        return wrap_uv_handle(h, 'udp')
+      end
+    end
+  end
+end
+
 local function install_wrappers()
   if state.installed then return end
   state.installed = true
@@ -291,32 +405,9 @@ local function install_wrappers()
   wrap_function(os, 'execute', 'os.execute', false)
   wrap_function(io, 'popen', 'io.popen', nil)
 
-  if uv then
-    wrap_function(uv, 'spawn', 'uv.spawn', nil)
-    wrap_function(uv, 'tcp_connect', 'uv.tcp_connect', nil)
-    wrap_function(uv, 'udp_send', 'uv.udp_send', nil)
-
-    if type(uv.new_tcp) == 'function' then
-      if originals[uv] == nil then originals[uv] = {} end
-      if not originals[uv].new_tcp then
-        originals[uv].new_tcp = uv.new_tcp
-        uv.new_tcp = function(...)
-          local h = originals[uv].new_tcp(...)
-          return wrap_uv_handle(h, 'tcp')
-        end
-      end
-    end
-
-    if type(uv.new_udp) == 'function' then
-      if originals[uv] == nil then originals[uv] = {} end
-      if not originals[uv].new_udp then
-        originals[uv].new_udp = uv.new_udp
-        uv.new_udp = function(...)
-          local h = originals[uv].new_udp(...)
-          return wrap_uv_handle(h, 'udp')
-        end
-      end
-    end
+  install_uv_wrappers(uv)
+  if vim.uv and vim.uv ~= uv then
+    install_uv_wrappers(vim.uv)
   end
 end
 
@@ -428,7 +519,7 @@ function M.setup(opts)
     })
   end
 
-  set_env_blocked(state.enabled)
+  refresh_env_block()
 end
 
 function M.block_all()
@@ -436,7 +527,7 @@ function M.block_all()
   state.mode = 'block_all'
   state.allow = {}
   state.block = {}
-  set_env_blocked(true)
+  refresh_env_block()
 end
 
 function M.unblock()
@@ -448,14 +539,14 @@ function M.block_only(list)
   state.enabled = true
   state.mode = 'blocklist'
   state.block = set_from_list(list)
-  set_env_blocked(true)
+  refresh_env_block()
 end
 
 function M.allow_only(list)
   state.enabled = true
   state.mode = 'allowlist'
   state.allow = set_from_list(list)
-  set_env_blocked(true)
+  refresh_env_block()
 end
 
 function M.env_clear()
