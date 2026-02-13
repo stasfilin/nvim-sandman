@@ -90,6 +90,86 @@ Policy notes:
 - Rule matching (MVP): `action`, `actor`, `exe`, `args_any`, `target_pattern`
 - Action classes (current): `exec`, `socket` (best-effort)
 
+## Policy Deep Dive
+
+### Evaluation order
+- A call is checked by Sandman mode (`block_all` / `blocklist` / `allowlist`).
+- If policy is enabled, the same call is also checked by policy rules.
+- If either system blocks, the final result is blocked.
+
+### Rule matching behavior
+- Rules are evaluated top-to-bottom.
+- First matching rule wins.
+- If nothing matches, `policy.default` is used.
+
+### Fields for `exec` rules
+- `id`: optional identifier for audit readability.
+- `action`: currently `exec` or `socket`.
+- `decision`: `allow`, `deny`, `prompt_once`.
+- `actor`: plugin name/pattern (best-effort attribution).
+- `exe`: executable basename (`curl`, `git`, `rg`, ...).
+- `args_any`: match if any listed argument is present.
+- `target_pattern`: pattern/regex-like check against normalized target.
+
+### prompt_once semantics
+- On first match, user is prompted with Allow/Deny.
+- Decision is cached for current Neovim session by `(actor, action, target)`.
+- Restarting Neovim clears this cache.
+
+### monitor vs enforce
+- `monitor`: no blocking from policy, but logs decision and matched rule.
+- `enforce`: policy `deny` blocks the call.
+- Sandman core mode still applies in both cases.
+
+### Audit fields
+Policy audit is JSONL, one event per line. Common fields:
+- `ts`, `action`, `target`, `cwd`
+- `actor`, `actor_confidence`
+- `decision`, `rule_id`, `mode`, `result`
+
+## Policy Recipes
+
+Allow common dev tooling, deny risky fetch tools:
+```lua
+policy = {
+  enabled = true,
+  mode = 'enforce',
+  default = 'deny',
+  rules = {
+    { id = 'allow-git', action = 'exec', exe = 'git', decision = 'allow' },
+    { id = 'allow-rg', action = 'exec', exe = 'rg', decision = 'allow' },
+    { id = 'deny-curl', action = 'exec', exe = 'curl', decision = 'deny' },
+    { id = 'deny-wget', action = 'exec', exe = 'wget', decision = 'deny' },
+  },
+}
+```
+
+Prompt before running script runtimes:
+```lua
+policy = {
+  enabled = true,
+  mode = 'enforce',
+  default = 'allow',
+  rules = {
+    { id = 'prompt-node', action = 'exec', exe = 'node', decision = 'prompt_once' },
+    { id = 'prompt-python', action = 'exec', exe = 'python', decision = 'prompt_once' },
+  },
+}
+```
+
+Silent rollout first, then enforce:
+```lua
+policy = {
+  enabled = true,
+  mode = 'monitor',
+  default = 'allow',
+  rules = {
+    { id = 'deny-curl', action = 'exec', exe = 'curl', decision = 'deny' },
+  },
+}
+-- switch mode to 'enforce' after audit review
+```
+
 ## Commands
 - `:Sandman block` - block network for all plugins.
 - `:Sandman unblock` - disable blocking.
@@ -182,23 +262,70 @@ env_block note:
   values only for that call, then restore the global lock.
 - In `blocklist` and `allowlist`, Sandman relies on call interception only.
 
+## Troubleshooting
+
+`nvim-sandman: blocked ... from unknown`:
+- This means actor attribution could not map stack frames to a known plugin path.
+- Common reasons: manual `:lua` calls, timer/callback boundaries, C frames, generic wrappers.
+- You can provide custom `detect_plugin` to improve attribution.
+
+Manual command testing is blocked in `block_all`:
+- `:lua print(vim.fn.system('curl ...'))` is usually actor `unknown` and will be blocked.
+- Use `:Sandman temp-net 10000` for temporary allowance.
+
+Policy appears not to block:
+- Verify `policy.enabled = true`.
+- Verify `policy.mode = 'enforce'` (not `monitor`).
+- Check rule ordering and `policy.default` fallback.
+- Inspect audit with `:Sandman policy-audit 50`.
+
+Too many prompts with `prompt_once`:
+- Cache key includes `target`, so command variations can create new prompts.
+- Use more explicit `allow/deny` rules for stable high-volume commands.
+
 ## FAQ
+
 **Will this block curl/wget/etc started outside Neovim?**
-No. This only intercepts network-related calls made inside the Neovim process.
+No. This only intercepts calls made inside the Neovim process.
 
 **A plugin already started a background process. Will blocking stop it?**
-Not necessarily. Restart Neovim or stop that process to fully enforce blocking.
+Not necessarily. Restart Neovim or stop that process for full effect.
 
 **Can I use it only for a single plugin?**
-Yes. Use `blocklist` and set `block` to that plugin, or `allowlist` and only allow a small set.
+Yes. Use `blocklist` with one plugin in `block`, or `allowlist` with one plugin in `allow`.
 
 **How do I temporarily allow network?**
-Use `:Sandman temp-net [ms]`. It enables network for the given duration (default `60000` ms).
+Use `:Sandman temp-net [ms]`.
+
+**Should I use this together with another wrapper plugin?**
+No. Prefer one wrapper layer to avoid monkey-patch stacking conflicts.
+
+**What does policy `monitor` mode do exactly?**
+It never blocks by policy, but logs what policy would decide.
+
+**What does policy `enforce` mode do exactly?**
+Policy `deny` blocks the call. Sandman core mode still applies.
+
+**Does `prompt_once` persist across restarts?**
+No, cache is session-only.
+
+**Why do I see actor `unknown`?**
+Attribution is best-effort and stack-based; some call paths are not attributable.
+
+**Can I allow manual `:lua` testing while still blocking plugins?**
+Yes. Use custom `detect_plugin` and map manual calls to a synthetic actor (for example `manual`), then add it to `allow`.
+
+**How do I roll out policy safely?**
+Start with `policy.mode = 'monitor'`, inspect audit logs, then switch to `enforce`.
+
+**Can this replace a system firewall?**
+No. It improves runtime control inside Neovim, not OS-level isolation.
 
 ## Tips
 - Start with `block_all`, then add trusted plugins to `allow`.
 - Use `:Sandman stats` to discover which plugins are attempting network access.
 - If you need policy rules, enable integrated `policy` instead of stacking another wrapper plugin.
+- For policy rollout, use `monitor` first, then `enforce`.
 
 ## Limitations
 - This is not a system firewall. It only blocks calls inside the Neovim process.
