@@ -285,40 +285,42 @@ Too many prompts with `prompt_once`:
 
 ## FAQ
 
-**Will this block curl/wget/etc started outside Neovim?**
-No. This only intercepts calls made inside the Neovim process.
+### Will this block `curl` / `wget` / etc started outside Neovim?
+No. It only intercepts calls made inside the Neovim process.
 
-**A plugin already started a background process. Will blocking stop it?**
-Not necessarily. Restart Neovim or stop that process for full effect.
+### A plugin already started a background process. Will blocking stop it?
+Usually no. Restart Neovim or stop that process for full effect.
 
-**Can I use it only for a single plugin?**
-Yes. Use `blocklist` with one plugin in `block`, or `allowlist` with one plugin in `allow`.
+### Can I use it only for a single plugin?
+Yes.
+- Use `blocklist` with one plugin in `block`.
+- Or use `allowlist` with one plugin in `allow`.
 
-**How do I temporarily allow network?**
+### How do I temporarily allow network?
 Use `:Sandman temp-net [ms]`.
 
-**Should I use this together with another wrapper plugin?**
+### Should I use this together with another wrapper plugin?
 No. Prefer one wrapper layer to avoid monkey-patch stacking conflicts.
 
-**What does policy `monitor` mode do exactly?**
+### What does policy `monitor` mode do?
 It never blocks by policy, but logs what policy would decide.
 
-**What does policy `enforce` mode do exactly?**
+### What does policy `enforce` mode do?
 Policy `deny` blocks the call. Sandman core mode still applies.
 
-**Does `prompt_once` persist across restarts?**
-No, cache is session-only.
+### Does `prompt_once` persist across restarts?
+No. Cache is session-only.
 
-**Why do I see actor `unknown`?**
+### How do I roll out policy safely?
+Start with `policy.mode = "monitor"`, inspect audit logs, then switch to `enforce`.
+
+### Why do I see actor `unknown`?
 Attribution is best-effort and stack-based; some call paths are not attributable.
 
-**Can I allow manual `:lua` testing while still blocking plugins?**
+### Can I allow manual `:lua` testing while still blocking plugins?
 Yes. Use custom `detect_plugin` and map manual calls to a synthetic actor (for example `manual`), then add it to `allow`.
 
-**How do I roll out policy safely?**
-Start with `policy.mode = 'monitor'`, inspect audit logs, then switch to `enforce`.
-
-**Can this replace a system firewall?**
+### Can this replace a system firewall?
 No. It improves runtime control inside Neovim, not OS-level isolation.
 
 ## Tips
