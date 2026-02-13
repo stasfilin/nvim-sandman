@@ -2,6 +2,11 @@ local M = {}
 
 local uv = vim.loop
 
+local policy_config = require('nvim_sandman.policy.config')
+local policy_engine = require('nvim_sandman.policy.engine')
+local policy_prompt = require('nvim_sandman.policy.prompt')
+local policy_audit = require('nvim_sandman.policy.audit')
+
 local state = {
   enabled = false,
   mode = 'block_all', -- block_all | blocklist | allowlist
@@ -14,6 +19,10 @@ local state = {
   env_block = true,
   env_backup = nil,
   temp_net_ms = 60000,
+  policy = {
+    enabled = false,
+    config = nil,
+  },
   stats = {
     total = { attempts = 0, blocked = 0, allowed = 0 },
     by_plugin = {},
@@ -43,6 +52,33 @@ local function unpack_values(t, i, j)
     return
   end
   return t[i], unpack_values(t, i + 1, j)
+end
+
+local function basename(path)
+  if type(path) ~= 'string' then
+    return ''
+  end
+
+  local normalized = path:gsub('\\', '/')
+  return normalized:match('([^/]+)$') or normalized
+end
+
+local function current_cwd()
+  if uv and type(uv.cwd) == 'function' then
+    local ok, cwd = pcall(uv.cwd)
+    if ok and type(cwd) == 'string' and cwd ~= '' then
+      return cwd
+    end
+  end
+
+  if vim and vim.fn and type(vim.fn.getcwd) == 'function' then
+    local ok, cwd = pcall(vim.fn.getcwd)
+    if ok and type(cwd) == 'string' and cwd ~= '' then
+      return cwd
+    end
+  end
+
+  return '.'
 end
 
 local function set_from_list(list)
@@ -112,7 +148,6 @@ local function set_contains_plugin(set, plugin)
 end
 
 local function detect_plugin_default()
-  -- Walk the stack looking for a plugin path
   for level = 3, 20 do
     local info = debug.getinfo(level, 'S')
     if not info then break end
@@ -164,7 +199,6 @@ local function set_env_blocked(blocked)
       end
       state.env_backup = nil
     else
-      -- Clear any existing proxy vars if no backup was captured
       for _, k in ipairs(PROXY_ENV_KEYS) do
         vim.env[k] = nil
       end
@@ -177,8 +211,6 @@ local function should_block_env()
     return false
   end
 
-  -- Keep process-wide proxy lock for strict block_all mode.
-  -- Allowed plugins can get per-call env restoration in wrappers.
   return state.mode == 'block_all'
 end
 
@@ -280,14 +312,162 @@ local function on_block(action, plugin)
   end
 end
 
-local function guard(action, fallback)
+local function parse_exec_command(cmd)
+  if type(cmd) == 'table' then
+    local out = {}
+    for idx = 2, #cmd do
+      out[#out + 1] = tostring(cmd[idx])
+    end
+
+    local exe = basename(tostring(cmd[1] or ''))
+    local target = table.concat(vim.tbl_map(tostring, cmd), ' ')
+    return exe, out, target
+  end
+
+  if type(cmd) == 'string' then
+    local first = cmd:match('^%s*(%S+)') or ''
+    return basename(first), {}, cmd
+  end
+
+  return '', {}, ''
+end
+
+local function build_policy_request(action, args)
+  local req = nil
+
+  if action == 'vim.system' then
+    local cmd = args[1]
+    local opts = args[2]
+    local exe, cmd_args, target = parse_exec_command(cmd)
+    req = {
+      action = 'exec',
+      exe = exe,
+      args = cmd_args,
+      target = target,
+      cwd = type(opts) == 'table' and opts.cwd or current_cwd(),
+    }
+  elseif
+    action == 'vim.fn.system'
+    or action == 'vim.fn.systemlist'
+    or action == 'vim.fn.jobstart'
+    or action == 'vim.jobstart'
+    or action == 'vim.fn.termopen'
+  then
+    local cmd = args[1]
+    local opts = args[2]
+    local exe, cmd_args, target = parse_exec_command(cmd)
+    req = {
+      action = 'exec',
+      exe = exe,
+      args = cmd_args,
+      target = target,
+      cwd = type(opts) == 'table' and opts.cwd or current_cwd(),
+    }
+  elseif action == 'uv.spawn' then
+    local path = args[1]
+    local opts = type(args[2]) == 'table' and args[2] or {}
+    local cmd_args = {}
+    for _, arg in ipairs(opts.args or {}) do
+      cmd_args[#cmd_args + 1] = tostring(arg)
+    end
+    local exe = basename(tostring(path or ''))
+    local target = exe
+    if #cmd_args > 0 then
+      target = target .. ' ' .. table.concat(cmd_args, ' ')
+    end
+    req = {
+      action = 'exec',
+      exe = exe,
+      args = cmd_args,
+      target = target,
+      cwd = opts.cwd or current_cwd(),
+    }
+  elseif action == 'os.execute' or action == 'io.popen' then
+    local exe, cmd_args, target = parse_exec_command(args[1])
+    req = {
+      action = 'exec',
+      exe = exe,
+      args = cmd_args,
+      target = target,
+      cwd = current_cwd(),
+    }
+  elseif action == 'tcp_connect' then
+    req = {
+      action = 'socket',
+      target = string.format('%s:%s', tostring(args[1]), tostring(args[2])),
+      cwd = current_cwd(),
+    }
+  elseif action == 'udp_send' then
+    req = {
+      action = 'socket',
+      target = string.format('%s:%s', tostring(args[2]), tostring(args[3])),
+      cwd = current_cwd(),
+    }
+  end
+
+  return req
+end
+
+local function now_iso()
+  return os.date('!%Y-%m-%dT%H:%M:%SZ')
+end
+
+local function evaluate_policy(req)
+  if not state.policy.enabled or not state.policy.config or not req then
+    return false
+  end
+
+  local verdict = policy_engine.evaluate(req, state.policy.config)
+  local decision = verdict.decision
+
+  if decision == 'prompt_once' then
+    decision = policy_prompt.resolve(req)
+  end
+
+  local blocked = state.policy.config.mode == 'enforce' and decision == 'deny'
+  local result = blocked and 'blocked' or 'allowed'
+
+  if state.policy.config.mode == 'monitor' and decision == 'deny' then
+    result = 'allowed_monitor'
+  end
+
+  policy_audit.append({
+    ts = now_iso(),
+    action = req.action,
+    actor = req.actor,
+    actor_confidence = req.actor_confidence,
+    target = req.target,
+    cwd = req.cwd,
+    decision = decision,
+    rule_id = verdict.rule_id,
+    mode = state.policy.config.mode,
+    result = result,
+  })
+
+  return blocked
+end
+
+local function guard(action, fallback, raw_args)
   local plugin = current_plugin()
-  local blocked = is_blocked_for(plugin)
+  local legacy_blocked = is_blocked_for(plugin)
+
+  local req = build_policy_request(action, raw_args or {})
+  if req then
+    req.actor = plugin or 'unknown'
+    req.actor_confidence = plugin and 0.8 or 0.0
+    req.cwd = req.cwd or current_cwd()
+  end
+
+  local policy_blocked = evaluate_policy(req)
+  local blocked = legacy_blocked or policy_blocked
+
   record_stats(action, plugin, blocked)
+
   if blocked then
     on_block(action, plugin)
     return true, fallback
   end
+
   return false, plugin
 end
 
@@ -300,7 +480,7 @@ local function wrap_function(owner, name, action, fallback)
   originals[owner][name] = owner[name]
   owner[name] = function(...)
     local args = pack(...)
-    local blocked, payload = guard(action, fallback)
+    local blocked, payload = guard(action, fallback, args)
     if blocked then
       return payload
     end
@@ -320,7 +500,7 @@ local function wrap_uv_handle(handle, kind)
     __index = function(_, key)
       if key == 'connect' and kind == 'tcp' then
         return function(_, host, port, cb)
-          local blocked = guard('tcp_connect', nil)
+          local blocked = guard('tcp_connect', nil, { host, port, cb })
           if blocked then
             return
           end
@@ -331,7 +511,7 @@ local function wrap_uv_handle(handle, kind)
       end
       if key == 'send' and kind == 'udp' then
         return function(_, data, host, port, cb)
-          local blocked = guard('udp_send', nil)
+          local blocked = guard('udp_send', nil, { data, host, port, cb })
           if blocked then
             return
           end
@@ -411,7 +591,24 @@ local function install_wrappers()
   end
 end
 
+local function apply_policy_setup(policy_opts)
+  if type(policy_opts) ~= 'table' then
+    state.policy.enabled = false
+    state.policy.config = nil
+    policy_prompt.clear()
+    return
+  end
+
+  local normalized = policy_config.normalize(policy_opts)
+  state.policy.enabled = normalized.enabled == true
+  state.policy.config = normalized
+
+  policy_audit.setup(normalized.audit)
+  policy_prompt.clear()
+end
+
 function M.setup(opts)
+  opts = opts or {}
   install_wrappers()
 
   if opts.enabled ~= nil then
@@ -441,14 +638,16 @@ function M.setup(opts)
   if opts.temp_net_ms ~= nil then
     state.temp_net_ms = tonumber(opts.temp_net_ms) or state.temp_net_ms
   end
-  if opts.stats ~= nil then
-    if opts.stats == false then
-      state.stats = {
-        total = { attempts = 0, blocked = 0, allowed = 0 },
-        by_plugin = {},
-        by_action = {},
-      }
-    end
+  if opts.stats ~= nil and opts.stats == false then
+    state.stats = {
+      total = { attempts = 0, blocked = 0, allowed = 0 },
+      by_plugin = {},
+      by_action = {},
+    }
+  end
+
+  if opts.policy ~= nil then
+    apply_policy_setup(opts.policy)
   end
 
   if opts.commands ~= false then
@@ -472,31 +671,53 @@ function M.setup(opts)
       end
       if sub == 'stats' then
         local summary = M.stats_summary()
-        vim.schedule(function()
-          vim.notify(summary, vim.log.levels.INFO)
-        end)
+        vim.notify(summary, vim.log.levels.INFO)
         return
       end
       if sub == 'stats-reset' then
         M.stats_reset()
+        vim.notify('nvim-sandman: stats reset', vim.log.levels.INFO)
         return
       end
       if sub == 'env-clear' then
         M.env_clear()
+        vim.notify('nvim-sandman: env proxy vars restored/cleared', vim.log.levels.INFO)
         return
       end
       if sub == 'temp-net' then
-        local ms = tonumber(cmd.fargs[2]) or state.temp_net_ms
-        M.temp_net(ms)
+        M.temp_net(tonumber(cmd.fargs[2]))
+        return
+      end
+      if sub == 'policy-status' then
+        local p = M.policy_status()
+        if not p.enabled then
+          vim.notify('nvim-sandman policy: disabled', vim.log.levels.INFO)
+          return
+        end
+        local status_msg = string.format(
+          'nvim-sandman policy: enabled mode=%s default=%s rules=%d',
+          p.mode,
+          p.default,
+          p.rules
+        )
+        vim.notify(status_msg, vim.log.levels.INFO)
+        return
+      end
+      if sub == 'policy-audit' then
+        local lines = M.policy_audit_tail(tonumber(cmd.fargs[2]) or 20)
+        if #lines == 0 then
+          vim.notify('nvim-sandman policy: audit log is empty', vim.log.levels.INFO)
+          return
+        end
+        vim.notify(table.concat(lines, '\n'), vim.log.levels.INFO)
         return
       end
 
-      vim.schedule(function()
-        local msg =
-          'nvim-sandman: unknown subcommand. Use :Sandman ' ..
-          'block|unblock|block-only|allow-only|stats|stats-reset|env-clear|temp-net [ms]'
-        vim.notify(msg, vim.log.levels.WARN)
-      end)
+      local usage_msg = table.concat({
+        'nvim-sandman: unknown subcommand. Use :Sandman',
+        'block|unblock|block-only|allow-only|stats|stats-reset|env-clear|temp-net|policy-status|policy-audit',
+      }, ' ')
+      vim.notify(usage_msg, vim.log.levels.WARN)
     end, {
       nargs = '+',
       complete = function(_, line)
@@ -509,6 +730,8 @@ function M.setup(opts)
           'stats-reset',
           'env-clear',
           'temp-net',
+          'policy-status',
+          'policy-audit',
         }
         local args = vim.split(line, '%s+')
         if #args <= 2 then
@@ -618,6 +841,24 @@ function M.stats_summary()
   end
 
   return table.concat(lines, '\n')
+end
+
+function M.policy_status()
+  if not state.policy.enabled or not state.policy.config then
+    return { enabled = false }
+  end
+
+  return {
+    enabled = true,
+    mode = state.policy.config.mode,
+    default = state.policy.config.default,
+    rules = #state.policy.config.rules,
+    audit_path = state.policy.config.audit and state.policy.config.audit.path or nil,
+  }
+end
+
+function M.policy_audit_tail(n)
+  return policy_audit.tail(n)
 end
 
 return M

@@ -28,12 +28,20 @@ local function reset_vim()
     uv = {},
     env = {},
     fn = {
+      stdpath = function() return '/tmp' end,
       system = function() return '' end,
       systemlist = function() return {} end,
       jobstart = function() return 1 end,
       termopen = function() return 1 end,
     },
     system = function() return true end,
+    tbl_map = function(fn, list)
+      local out = {}
+      for i, v in ipairs(list) do
+        out[i] = fn(v)
+      end
+      return out
+    end,
     jobstart = function() return 1 end,
     schedule = function(cb) cb() end,
     defer_fn = function(cb, _) cb() end,
@@ -55,6 +63,7 @@ local function reset_vim()
     deepcopy = tbl_deepcopy,
     api = {
       nvim_create_user_command = function(_, _, _) end,
+      nvim__get_runtime = function() return {} end,
     },
     log = {
       levels = {
