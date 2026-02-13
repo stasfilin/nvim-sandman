@@ -5,7 +5,8 @@ Lightweight Neovim plugin to block network access from plugins.
 ## Features
 - Works on macOS and Linux (no root required).
 - Blocks network access inside the Neovim process.
-- Supports “block all” or “block only some plugins” modes.
+- Supports `block_all`, `blocklist`, and `allowlist` modes.
+- Optional built-in declarative policy engine (`allow` / `deny` / `prompt_once`).
 
 ## Why this exists
 Sometimes you want Neovim to be fully offline (security, focus, reproducibility) or to
@@ -13,15 +14,18 @@ allow only a small set of trusted plugins to talk to the network. `nvim-sandman`
 you a simple, reversible switch without touching system firewalls.
 
 ## How it works
-The plugin wraps common ways plugins reach the network or spawn network-capable
-processes (`vim.system`, `vim.fn.jobstart`, `uv.spawn`, TCP/UDP connect/send).
-Calls are allowed or blocked based on the current mode and the plugin detected
-from the call stack.
+The plugin wraps common ways plugins reach network-capable paths or spawn processes
+(`vim.system`, `vim.fn.jobstart`, `uv.spawn`, TCP/UDP connect/send, etc.). Calls are
+allowed or blocked based on current mode and the plugin detected from call stack.
+
+Policy support is integrated into the same wrapper layer, so you do not need to run a
+second plugin that patches the same APIs.
 
 ## Typical use cases
-- Run Neovim in “offline mode” by default and temporarily allow specific plugins.
+- Run Neovim in offline mode by default and temporarily allow specific plugins.
 - Audit which plugins try to access the network.
 - Prevent accidental downloads during demos or tests.
+- Add rule-based controls for command execution (`curl`, `git`, `rg`, ...).
 
 ## Installation (lazy.nvim)
 ```lua
@@ -54,14 +58,49 @@ Common flows:
 - See what tried to reach the network:
   `:Sandman stats`
 
+## Integrated Policy (Optional)
+Enable this if you want declarative per-action rules in addition to Sandman core modes.
+
+```lua
+require('nvim_sandman').setup({
+  enabled = true,
+  mode = 'block_all',
+  allow = { 'lazy.nvim' },
+
+  policy = {
+    enabled = true,
+    mode = 'enforce', -- monitor | enforce
+    default = 'prompt_once', -- allow | deny | prompt_once
+    audit = {
+      enabled = true,
+      path = vim.fn.stdpath('state') .. '/nvim-sandman-policy-audit.jsonl',
+    },
+    rules = {
+      { id = 'allow-rg', action = 'exec', exe = 'rg', decision = 'allow' },
+      { id = 'deny-curl', action = 'exec', exe = 'curl', decision = 'deny' },
+      { id = 'prompt-node', action = 'exec', exe = 'node', decision = 'prompt_once' },
+    },
+  },
+})
+```
+
+Policy notes:
+- Decision modes: `allow`, `deny`, `prompt_once`
+- Enforcement modes: `monitor` (log only), `enforce` (deny blocks)
+- Rule matching (MVP): `action`, `actor`, `exe`, `args_any`, `target_pattern`
+- Action classes (current): `exec`, `socket` (best-effort)
+
 ## Commands
-- `:Sandman block` — block network for all plugins.
-- `:Sandman unblock` — disable blocking.
-- `:Sandman block-only <p1> <p2>` — block only listed plugins.
-- `:Sandman allow-only <p1> <p2>` — allow network only for listed plugins.
-- `:Sandman stats` — show summary stats.
-- `:Sandman stats-reset` — reset stats.
-- `:Sandman temp-net [ms]` — temporarily enable network for N ms (default 60000).
+- `:Sandman block` - block network for all plugins.
+- `:Sandman unblock` - disable blocking.
+- `:Sandman block-only <p1> <p2>` - block only listed plugins.
+- `:Sandman allow-only <p1> <p2>` - allow network only for listed plugins.
+- `:Sandman stats` - show summary stats.
+- `:Sandman stats-reset` - reset stats.
+- `:Sandman env-clear` - restore/clear proxy env values.
+- `:Sandman temp-net [ms]` - temporarily enable network for N ms (default 60000).
+- `:Sandman policy-status` - show policy status/mode.
+- `:Sandman policy-audit [N]` - show last N policy audit lines.
 
 ## Lua API
 ```lua
@@ -74,6 +113,9 @@ print(vim.inspect(nb.stats()))
 nb.stats_reset()
 print(nb.stats_summary())
 nb.temp_net(30000)
+
+print(vim.inspect(nb.policy_status()))
+print(table.concat(nb.policy_audit_tail(20), '\n'))
 ```
 
 ## Configuration
@@ -94,6 +136,20 @@ require('nvim_sandman').setup({
   detect_plugin = function()
     -- custom plugin detection (return name or nil)
   end,
+
+  policy = {
+    enabled = false,
+    mode = 'enforce', -- monitor | enforce
+    default = 'prompt_once', -- allow | deny | prompt_once
+    audit = {
+      enabled = true,
+      path = vim.fn.stdpath('state') .. '/nvim-sandman-policy-audit.jsonl',
+    },
+    rules = {
+      -- ordered top-to-bottom, first match wins
+      -- { id = 'deny-curl', action = 'exec', exe = 'curl', decision = 'deny' },
+    },
+  },
 })
 ```
 
@@ -119,7 +175,7 @@ plugin nvim-treesitter: attempts=2 blocked=2 allowed=0
 - `blocklist`: only plugins in `block` are blocked.
 - `allowlist`: everything is blocked, except plugins in `allow`.
 
-`env_block` note:
+env_block note:
 - Proxy env vars are process-wide, so they cannot be applied per plugin.
 - In strict `block_all`, proxy env vars are poisoned process-wide for hard blocking.
 - For plugins listed in `allow`, wrapped calls temporarily restore original proxy env
@@ -127,21 +183,22 @@ plugin nvim-treesitter: attempts=2 blocked=2 allowed=0
 - In `blocklist` and `allowlist`, Sandman relies on call interception only.
 
 ## FAQ
-**Will this block curl/wget/etc started outside Neovim?**  
+**Will this block curl/wget/etc started outside Neovim?**
 No. This only intercepts network-related calls made inside the Neovim process.
 
-**A plugin already started a background process. Will blocking stop it?**  
+**A plugin already started a background process. Will blocking stop it?**
 Not necessarily. Restart Neovim or stop that process to fully enforce blocking.
 
-**Can I use it only for a single plugin?**  
+**Can I use it only for a single plugin?**
 Yes. Use `blocklist` and set `block` to that plugin, or `allowlist` and only allow a small set.
 
-**How do I temporarily allow network?**  
+**How do I temporarily allow network?**
 Use `:Sandman temp-net [ms]`. It enables network for the given duration (default `60000` ms).
 
 ## Tips
 - Start with `block_all`, then add trusted plugins to `allow`.
 - Use `:Sandman stats` to discover which plugins are attempting network access.
+- If you need policy rules, enable integrated `policy` instead of stacking another wrapper plugin.
 
 ## Limitations
 - This is not a system firewall. It only blocks calls inside the Neovim process.
@@ -149,6 +206,7 @@ Use `:Sandman temp-net [ms]`. It enables network for the given duration (default
 - Stats are stored in memory only and reset when Neovim restarts.
 - Blocking after a long-lived background process is already running may not stop it.
   Restart Neovim or stop that process to fully enforce blocking.
+- Actor attribution and socket classification are heuristic.
 
 ## Plugin detection
 The plugin name is detected from the call stack file path. Supported directories:

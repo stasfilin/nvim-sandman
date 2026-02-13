@@ -42,4 +42,12 @@ function M.env_clear()
   core.env_clear()
 end
 
+function M.policy_status()
+  return core.policy_status()
+end
+
+function M.policy_audit_tail(n)
+  return core.policy_audit_tail(n)
+end
+
 return M
