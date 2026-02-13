@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/stasfilin/nvim-sandman/compare/v1.0.3...v1.1.0) (2026-02-13)
+
+
+### Features
+
+* adding policy logic ([836f6fc](https://github.com/stasfilin/nvim-sandman/commit/836f6fc21990c2049d09a85cc258a19e9e5d9283))
+
 ## [1.0.3](https://github.com/stasfilin/nvim-sandman/compare/v1.0.2...v1.0.3) (2026-02-13)
 
 
