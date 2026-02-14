@@ -22,6 +22,33 @@ local function tbl_deepcopy(orig, seen)
   return setmetatable(copy, getmetatable(orig))
 end
 
+local function to_lua_literal(value)
+  local tv = type(value)
+  if tv == 'nil' then
+    return 'nil'
+  end
+  if tv == 'number' or tv == 'boolean' then
+    return tostring(value)
+  end
+  if tv == 'string' then
+    return string.format('%q', value)
+  end
+  if tv == 'table' then
+    local parts = {}
+    for k, v in pairs(value) do
+      local key
+      if type(k) == 'string' and k:match('^[%a_][%w_]*$') then
+        key = k
+      else
+        key = '[' .. to_lua_literal(k) .. ']'
+      end
+      parts[#parts + 1] = key .. ' = ' .. to_lua_literal(v)
+    end
+    return '{' .. table.concat(parts, ', ') .. '}'
+  end
+  error('unsupported value type for test serializer: ' .. tv)
+end
+
 local function reset_vim()
   _G.vim = {
     loop = {},
@@ -29,10 +56,21 @@ local function reset_vim()
     env = {},
     fn = {
       stdpath = function() return '/tmp' end,
+      mkdir = function() return 1 end,
       system = function() return '' end,
       systemlist = function() return {} end,
       jobstart = function() return 1 end,
       termopen = function() return 1 end,
+      json_encode = function(value)
+        return to_lua_literal(value)
+      end,
+      json_decode = function(content)
+        local chunk, err = load('return ' .. content, 'stats_decode', 't', {})
+        if not chunk then
+          error(err)
+        end
+        return chunk()
+      end,
     },
     system = function() return true end,
     tbl_map = function(fn, list)
@@ -214,6 +252,53 @@ test('allowed plugin via vim.uv.spawn gets unblocked env', function()
   assert_eq(ok, true, 'allowed vim.uv.spawn call should pass through')
   assert_eq(seen_proxy, nil, 'allowed vim.uv.spawn should see original proxy env')
   assert_eq(vim.env.http_proxy, '127.0.0.1:1', 'global proxy lock should be restored after vim.uv.spawn')
+end)
+
+test('stats=false keeps legacy behavior and disables collection', function()
+  reset_vim()
+  local core = load_core()
+  core.setup({
+    stats = false,
+    commands = false,
+  })
+
+  vim.fn.system('echo test')
+
+  local stats = core.stats()
+  assert_eq(stats.total.attempts, 0, 'stats=false should disable stats collection')
+  assert_eq(stats.total.blocked, 0, 'stats=false should keep blocked count at zero')
+  assert_eq(stats.total.allowed, 0, 'stats=false should keep allowed count at zero')
+end)
+
+test('file stats storage persists between setup calls', function()
+  reset_vim()
+  local stats_path = os.tmpname()
+  os.remove(stats_path)
+
+  local core = load_core()
+  core.setup({
+    commands = false,
+    stats = {
+      storage = 'file',
+      path = stats_path,
+    },
+  })
+
+  vim.fn.system('echo test')
+  assert_eq(core.stats().total.attempts, 1, 'first session should record an attempt')
+
+  reset_vim()
+  local core_reloaded = load_core()
+  core_reloaded.setup({
+    commands = false,
+    stats = {
+      storage = 'file',
+      path = stats_path,
+    },
+  })
+
+  assert_eq(core_reloaded.stats().total.attempts, 1, 'second session should restore attempts from file')
+  os.remove(stats_path)
 end)
 
 local passed = 0

@@ -208,6 +208,11 @@ require('nvim_sandman').setup({
   ignore_notifications = { 'nvim-treesitter' }, -- suppress blocked notifications for listed plugins
   env_block = true, -- strict block_all: poison HTTP(S)/ALL proxy env vars process-wide
   temp_net_ms = 60000, -- default duration for :Sandman temp-net
+  stats = {
+    enabled = true,
+    storage = 'memory', -- memory | file
+    path = vim.fn.stdpath('state') .. '/nvim-sandman-stats.json', -- used when storage='file'
+  },
   commands = true, -- create commands
   on_block = function(info)
     -- info.action, info.plugin, info.message
@@ -239,9 +244,14 @@ For ignored plugins, both built-in notifications and `on_block` callback executi
 are suppressed.
 
 ## Stats
-Stats are collected per session in memory only. You can inspect them via
-`nb.stats()` or `:Sandman stats`. A summary includes totals plus the top plugins
-by attempts.
+Stats are collected in memory by default. You can inspect them via `nb.stats()`
+or `:Sandman stats`. A summary includes totals plus the top plugins by attempts.
+
+Storage options:
+- `stats = false` or `stats = { enabled = false }`: disable stats collection.
+- `stats = { storage = 'memory' }`: in-memory only (default).
+- `stats = { storage = 'file', path = '...' }`: persist stats to a JSON file and
+  restore on next startup.
 
 Example output:
 ```
@@ -332,7 +342,7 @@ No. It improves runtime control inside Neovim, not OS-level isolation.
 ## Limitations
 - This is not a system firewall. It only blocks calls inside the Neovim process.
 - If a plugin uses an external process/daemon outside Neovim, it may bypass this.
-- Stats are stored in memory only and reset when Neovim restarts.
+- Stats are in-memory by default; file persistence is available via `stats.storage = "file"`.
 - Blocking after a long-lived background process is already running may not stop it.
   Restart Neovim or stop that process to fully enforce blocking.
 - Actor attribution and socket classification are heuristic.
