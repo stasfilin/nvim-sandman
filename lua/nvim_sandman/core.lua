@@ -23,6 +23,9 @@ local state = {
     enabled = false,
     config = nil,
   },
+  stats_enabled = true,
+  stats_storage = 'memory',
+  stats_path = nil,
   stats = {
     total = { attempts = 0, blocked = 0, allowed = 0 },
     by_plugin = {},
@@ -40,6 +43,8 @@ local PROXY_ENV_KEYS = {
   'NO_PROXY',
   'no_proxy',
 }
+
+local DEFAULT_STATS_FILE = 'nvim-sandman-stats.json'
 
 local function pack(...)
   return { n = select('#', ...), ... }
@@ -79,6 +84,201 @@ local function current_cwd()
   end
 
   return '.'
+end
+
+local function fresh_stats()
+  return {
+    total = { attempts = 0, blocked = 0, allowed = 0 },
+    by_plugin = {},
+    by_action = {},
+  }
+end
+
+local function dirname(path)
+  if type(path) ~= 'string' then
+    return nil
+  end
+
+  local normalized = path:gsub('\\', '/')
+  local parent = normalized:match('^(.*)/[^/]*$')
+  if parent == '' then
+    return nil
+  end
+  return parent
+end
+
+local function encode_json(value)
+  if vim and vim.fn and type(vim.fn.json_encode) == 'function' then
+    local ok, out = pcall(vim.fn.json_encode, value)
+    if ok and type(out) == 'string' then
+      return out
+    end
+  end
+
+  if vim and vim.json and type(vim.json.encode) == 'function' then
+    local ok, out = pcall(vim.json.encode, value)
+    if ok and type(out) == 'string' then
+      return out
+    end
+  end
+
+  return nil
+end
+
+local function decode_json(content)
+  if vim and vim.fn and type(vim.fn.json_decode) == 'function' then
+    local ok, out = pcall(vim.fn.json_decode, content)
+    if ok and type(out) == 'table' then
+      return out
+    end
+  end
+
+  if vim and vim.json and type(vim.json.decode) == 'function' then
+    local ok, out = pcall(vim.json.decode, content)
+    if ok and type(out) == 'table' then
+      return out
+    end
+  end
+
+  return nil
+end
+
+local function normalize_stats_bucket(value)
+  value = type(value) == 'table' and value or {}
+  return {
+    attempts = tonumber(value.attempts) or 0,
+    blocked = tonumber(value.blocked) or 0,
+    allowed = tonumber(value.allowed) or 0,
+  }
+end
+
+local function normalize_stats_value(value)
+  value = type(value) == 'table' and value or {}
+  local out = fresh_stats()
+  out.total = normalize_stats_bucket(value.total)
+
+  if type(value.by_plugin) == 'table' then
+    for key, bucket in pairs(value.by_plugin) do
+      if type(key) == 'string' and key ~= '' then
+        out.by_plugin[key] = normalize_stats_bucket(bucket)
+      end
+    end
+  end
+
+  if type(value.by_action) == 'table' then
+    for key, bucket in pairs(value.by_action) do
+      if type(key) == 'string' and key ~= '' then
+        out.by_action[key] = normalize_stats_bucket(bucket)
+      end
+    end
+  end
+
+  return out
+end
+
+local function default_stats_path()
+  if vim and vim.fn and type(vim.fn.stdpath) == 'function' then
+    local ok, state_path = pcall(vim.fn.stdpath, 'state')
+    if ok and type(state_path) == 'string' and state_path ~= '' then
+      return state_path .. '/' .. DEFAULT_STATS_FILE
+    end
+  end
+  return DEFAULT_STATS_FILE
+end
+
+local function load_stats_from_file(path)
+  if type(path) ~= 'string' or path == '' then
+    return nil
+  end
+
+  local file = io.open(path, 'r')
+  if not file then
+    return nil
+  end
+
+  local ok, content = pcall(file.read, file, '*a')
+  file:close()
+  if not ok or type(content) ~= 'string' or content == '' then
+    return nil
+  end
+
+  local decoded = decode_json(content)
+  if not decoded then
+    return nil
+  end
+  return normalize_stats_value(decoded)
+end
+
+local function persist_stats()
+  if not state.stats_enabled
+      or state.stats_storage ~= 'file'
+      or type(state.stats_path) ~= 'string'
+      or state.stats_path == '' then
+    return
+  end
+
+  local data = encode_json(state.stats)
+  if not data then
+    return
+  end
+
+  local parent = dirname(state.stats_path)
+  if parent and vim and vim.fn and type(vim.fn.mkdir) == 'function' then
+    pcall(vim.fn.mkdir, parent, 'p')
+  end
+
+  local file = io.open(state.stats_path, 'w')
+  if not file then
+    return
+  end
+
+  file:write(data)
+  file:close()
+end
+
+local function apply_stats_setup(stats_opts)
+  if stats_opts == false then
+    state.stats_enabled = false
+    state.stats_storage = 'memory'
+    state.stats_path = nil
+    state.stats = fresh_stats()
+    return
+  end
+
+  state.stats_enabled = true
+
+  if type(stats_opts) ~= 'table' then
+    state.stats_storage = 'memory'
+    state.stats_path = nil
+    return
+  end
+
+  if stats_opts.enabled == false then
+    state.stats_enabled = false
+    state.stats_storage = 'memory'
+    state.stats_path = nil
+    state.stats = fresh_stats()
+    return
+  end
+
+  local storage = stats_opts.storage
+  if storage ~= 'memory' and storage ~= 'file' then
+    storage = 'memory'
+  end
+  state.stats_storage = storage
+
+  if storage == 'file' then
+    state.stats_path = type(stats_opts.path) == 'string' and stats_opts.path or default_stats_path()
+    local loaded = load_stats_from_file(state.stats_path)
+    if loaded then
+      state.stats = loaded
+    else
+      persist_stats()
+    end
+    return
+  end
+
+  state.stats_path = nil
 end
 
 local function set_from_list(list)
@@ -272,6 +472,10 @@ local function is_blocked_for(plugin)
 end
 
 local function record_stats(action, plugin, blocked)
+  if not state.stats_enabled then
+    return
+  end
+
   state.stats.total.attempts = state.stats.total.attempts + 1
   if blocked then
     state.stats.total.blocked = state.stats.total.blocked + 1
@@ -295,6 +499,8 @@ local function record_stats(action, plugin, blocked)
   else
     state.stats.by_action[action].allowed = state.stats.by_action[action].allowed + 1
   end
+
+  persist_stats()
 end
 
 local function on_block(action, plugin)
@@ -638,12 +844,8 @@ function M.setup(opts)
   if opts.temp_net_ms ~= nil then
     state.temp_net_ms = tonumber(opts.temp_net_ms) or state.temp_net_ms
   end
-  if opts.stats ~= nil and opts.stats == false then
-    state.stats = {
-      total = { attempts = 0, blocked = 0, allowed = 0 },
-      by_plugin = {},
-      by_action = {},
-    }
+  if opts.stats ~= nil then
+    apply_stats_setup(opts.stats)
   end
 
   if opts.policy ~= nil then
@@ -805,11 +1007,8 @@ function M.stats()
 end
 
 function M.stats_reset()
-  state.stats = {
-    total = { attempts = 0, blocked = 0, allowed = 0 },
-    by_plugin = {},
-    by_action = {},
-  }
+  state.stats = fresh_stats()
+  persist_stats()
 end
 
 function M.stats_summary()
