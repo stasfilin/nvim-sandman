@@ -210,7 +210,10 @@ local function load_stats_from_file(path)
 end
 
 local function persist_stats()
-  if not state.stats_enabled or state.stats_storage ~= 'file' or type(state.stats_path) ~= 'string' or state.stats_path == '' then
+  if not state.stats_enabled
+      or state.stats_storage ~= 'file'
+      or type(state.stats_path) ~= 'string'
+      or state.stats_path == '' then
     return
   end
 
