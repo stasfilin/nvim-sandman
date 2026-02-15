@@ -1,3 +1,15 @@
+# [1.2.0](https://github.com/stasfilin/nvim-sandman/compare/v1.1.0...v1.2.0) (2026-02-15)
+
+
+### Bug Fixes
+
+* change linter problem ([afd7f39](https://github.com/stasfilin/nvim-sandman/commit/afd7f391078e5f790eed71eeb3f9ec4748c1152f))
+
+
+### Features
+
+* adding functionality to store statistics ([5c8c916](https://github.com/stasfilin/nvim-sandman/commit/5c8c916e739c96d260f3c75fdb1e22ddf193a777))
+
 # [1.1.0](https://github.com/stasfilin/nvim-sandman/compare/v1.0.3...v1.1.0) (2026-02-13)
 
 
