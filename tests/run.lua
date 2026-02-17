@@ -206,6 +206,37 @@ test('blocked plugin remains blocked in strict block_all', function()
   assert_eq(called, false, 'blocked plugin should not execute original function')
 end)
 
+test('blocked vim.system returns waitable object', function()
+  reset_vim()
+  local called = false
+  vim.system = function()
+    called = true
+    return {
+      wait = function()
+        return { code = 0, signal = 0, stdout = 'ok', stderr = '' }
+      end,
+    }
+  end
+
+  local core = load_core()
+  core.setup({
+    enabled = true,
+    mode = 'block_all',
+    allow = { 'gitsigns.nvim' },
+    detect_plugin = function() return 'lazy.nvim' end,
+    env_block = true,
+    commands = false,
+  })
+
+  local proc = vim.system({ 'python3', '--version' })
+  assert_eq(type(proc), 'table', 'blocked vim.system should return process-like table')
+  assert_eq(type(proc.wait), 'function', 'blocked vim.system should expose wait method')
+
+  local result = proc:wait()
+  assert_eq(result.code, 1, 'blocked vim.system wait result should return non-zero code')
+  assert_eq(called, false, 'blocked vim.system should not execute original function')
+end)
+
 test('allow matching supports short/full plugin name variants', function()
   reset_vim()
   local called = false

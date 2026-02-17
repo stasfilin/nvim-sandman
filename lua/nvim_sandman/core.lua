@@ -670,14 +670,57 @@ local function guard(action, fallback, raw_args)
   record_stats(action, plugin, blocked)
 
   if blocked then
+    local payload = fallback
+    if type(fallback) == 'function' then
+      payload = fallback(raw_args or {}, action, plugin)
+    end
     on_block(action, plugin)
-    return true, fallback
+    return true, payload
   end
 
   return false, plugin
 end
 
 local originals = {}
+
+local function blocked_vim_system(args)
+  local cmd = args[1]
+  local on_exit = args[3]
+  local exe, _, _ = parse_exec_command(cmd)
+  local stderr = 'blocked by nvim-sandman'
+  if exe ~= '' then
+    stderr = stderr .. ': ' .. exe
+  end
+
+  local result = {
+    code = 1,
+    signal = 0,
+    stdout = '',
+    stderr = stderr,
+  }
+
+  if type(on_exit) == 'function' then
+    vim.schedule(function()
+      pcall(on_exit, result)
+    end)
+  end
+
+  return {
+    pid = 0,
+    wait = function(_, _)
+      return result
+    end,
+    kill = function(_, _)
+      return false
+    end,
+    write = function(_, _)
+      return false
+    end,
+    is_closing = function(_)
+      return true
+    end,
+  }
+end
 
 local function wrap_function(owner, name, action, fallback)
   if type(owner[name]) ~= 'function' then return end
@@ -782,7 +825,7 @@ local function install_wrappers()
   if state.installed then return end
   state.installed = true
 
-  wrap_function(vim, 'system', 'vim.system', nil)
+  wrap_function(vim, 'system', 'vim.system', blocked_vim_system)
   wrap_function(vim.fn, 'system', 'vim.fn.system', '')
   wrap_function(vim.fn, 'systemlist', 'vim.fn.systemlist', {})
   wrap_function(vim.fn, 'jobstart', 'vim.fn.jobstart', -1)
