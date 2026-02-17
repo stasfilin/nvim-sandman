@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/stasfilin/nvim-sandman/compare/v1.2.0...v1.2.1) (2026-02-17)
+
+
+### Bug Fixes
+
+* change logic to detect unknown plugins/commands ([110717b](https://github.com/stasfilin/nvim-sandman/commit/110717ba3002f23a7d6f4c61f8de8b1c4cbebe2a))
+
 # [1.2.0](https://github.com/stasfilin/nvim-sandman/compare/v1.1.0...v1.2.0) (2026-02-15)
 
 
