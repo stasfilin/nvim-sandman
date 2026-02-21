@@ -6,8 +6,8 @@ It is useful for offline workflows, security hardening, and reproducible session
 ## Quick Links
 
 - [GitHub repository](https://github.com/stasfilin/nvim-sandman)
-- [README (full reference)](../README.md)
-- [Changelog](../CHANGELOG.md)
+- [README (full reference)](https://github.com/stasfilin/nvim-sandman/blob/main/README.md)
+- [Changelog](https://github.com/stasfilin/nvim-sandman/blob/main/CHANGELOG.md)
 
 ## Why Use It
 
