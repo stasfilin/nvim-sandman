@@ -351,6 +351,11 @@ No. It improves runtime control inside Neovim, not OS-level isolation.
 The plugin name is detected from the call stack file path. Supported directories:
 `site/pack/.../start`, `lazy/`, `plugged/`, `bundle/`.
 
+## Documentation (GitHub Pages)
+- Source for Pages is in `site/`.
+- Deployment workflow: `.github/workflows/pages.yml`.
+- Main entry page: `site/index.md`.
+
 ## Contributing
 Issues and PRs are welcome. Please keep changes focused and include a short description
 of the behavior you expect. If your change affects behavior, add or update a test
