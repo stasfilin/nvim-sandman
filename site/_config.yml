@@ -1,0 +1,4 @@
+title: nvim-sandman
+description: Lightweight Neovim plugin to block network access from plugins
+theme: minima
+markdown: kramdown
