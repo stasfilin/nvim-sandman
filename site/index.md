@@ -173,6 +173,12 @@ Check:
 Prompt cache key includes target. Slight command differences can trigger new prompts.
 Use explicit stable `allow` / `deny` rules for frequent commands.
 
+### Actor rules with hyphens do not match
+
+Use `actor` for exact plugin names such as `fzf-lua` or `nvim-treesitter`.
+Use `actor_pattern` only when you intentionally want pattern matching.
+Legacy pattern-like `actor` values still work temporarily, but they warn and should be migrated.
+
 ## FAQ
 
 ### Does it block tools started outside Neovim?

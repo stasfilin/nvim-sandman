@@ -77,8 +77,24 @@ local function validate_rule(rule, idx)
     error(('nvim-sandman: policy rule #%d has invalid decision'):format(idx))
   end
 
+  if rule.actor and type(rule.actor) ~= 'string' then
+    error(('nvim-sandman: policy rule #%d actor must be a string'):format(idx))
+  end
+
+  if rule.actor_pattern and type(rule.actor_pattern) ~= 'string' then
+    error(('nvim-sandman: policy rule #%d actor_pattern must be a string'):format(idx))
+  end
+
+  if rule.exe and type(rule.exe) ~= 'string' then
+    error(('nvim-sandman: policy rule #%d exe must be a string'):format(idx))
+  end
+
   if rule.args_any and type(rule.args_any) ~= 'table' then
     error(('nvim-sandman: policy rule #%d args_any must be a list'):format(idx))
+  end
+
+  if rule.target_pattern and type(rule.target_pattern) ~= 'string' then
+    error(('nvim-sandman: policy rule #%d target_pattern must be a string'):format(idx))
   end
 end
 

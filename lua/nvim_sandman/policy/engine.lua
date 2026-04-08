@@ -1,6 +1,6 @@
 local M = {}
-
 local MAGIC_PATTERN = '[%^%$%(%)%%%.%[%]%*%+%-%?]'
+local warned_legacy_actor_patterns = {}
 
 local function basename(path)
   if type(path) ~= 'string' then
@@ -11,7 +11,20 @@ local function basename(path)
   return normalized:match('([^/]+)$') or normalized
 end
 
-local function match_value(expected, actual)
+local function match_exact(expected, actual)
+  if expected == nil then
+    return true
+  end
+
+  if type(expected) ~= 'string' then
+    return false
+  end
+
+  actual = tostring(actual or '')
+  return actual == expected
+end
+
+local function match_pattern(expected, actual)
   if expected == nil then
     return true
   end
@@ -32,11 +45,29 @@ local function match_value(expected, actual)
     end
   end
 
-  if expected:find(MAGIC_PATTERN) then
-    return actual:find(expected) ~= nil
+  return actual:find(expected) ~= nil
+end
+
+local function looks_like_pattern(value)
+  return type(value) == 'string' and value:find(MAGIC_PATTERN) ~= nil
+end
+
+local function warn_legacy_actor_pattern(actor)
+  if warned_legacy_actor_patterns[actor] then
+    return
   end
 
-  return actual == expected
+  warned_legacy_actor_patterns[actor] = true
+
+  if vim and vim.notify and vim.log and vim.log.levels and vim.log.levels.WARN then
+    vim.notify(
+      string.format(
+        'nvim-sandman: policy rule actor=%q is using deprecated implicit pattern matching; use actor_pattern instead',
+        actor
+      ),
+      vim.log.levels.WARN
+    )
+  end
 end
 
 local function match_args_any(expected_args, actual_args)
@@ -67,7 +98,17 @@ local function match_rule(rule, req)
     return false
   end
 
-  if rule.actor and not match_value(rule.actor, req.actor) then
+  if rule.actor then
+    if not match_exact(rule.actor, req.actor) then
+      if rule.actor_pattern or not looks_like_pattern(rule.actor) or not match_pattern(rule.actor, req.actor) then
+        return false
+      end
+
+      warn_legacy_actor_pattern(rule.actor)
+    end
+  end
+
+  if rule.actor_pattern and not match_pattern(rule.actor_pattern, req.actor) then
     return false
   end
 
@@ -79,7 +120,7 @@ local function match_rule(rule, req)
     return false
   end
 
-  if rule.target_pattern and not match_value(rule.target_pattern, req.target) then
+  if rule.target_pattern and not match_pattern(rule.target_pattern, req.target) then
     return false
   end
 

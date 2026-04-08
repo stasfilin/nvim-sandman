@@ -140,10 +140,15 @@ Policy notes:
 - `id`: optional identifier for audit readability.
 - `action`: currently `exec` or `socket`.
 - `decision`: `allow`, `deny`, `prompt_once`.
-- `actor`: plugin name/pattern (best-effort attribution).
+- `actor`: exact plugin name match (best-effort attribution).
+- `actor_pattern`: Lua pattern or `/vim-regex/` match for actor when exact match is too narrow.
 - `exe`: executable basename (`curl`, `git`, `rg`, ...).
 - `args_any`: match if any listed argument is present.
 - `target_pattern`: pattern/regex-like check against normalized target.
+
+Compatibility note:
+- Legacy configs that used pattern-like values in `actor` still work for now.
+- Those rules emit a warning and should be migrated to `actor_pattern`.
 
 ### prompt_once semantics
 - On first match, user is prompted with Allow/Deny.
