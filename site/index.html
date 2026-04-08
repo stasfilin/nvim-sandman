@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>nvim-sandman Docs</title>
+    <meta
+      name="description"
+      content="Documentation for nvim-sandman, a Neovim plugin for controlling plugin network access."
+    />
+    <style>
+      :root {
+        --bg: #f5f7f2;
+        --card: #ffffff;
+        --text: #111619;
+        --muted: #4e5a62;
+        --line: #d9e0d5;
+        --accent: #1e6b4f;
+        --accent-2: #123f8a;
+        --code-bg: #f0f3ee;
+        --shadow: 0 10px 30px rgba(17, 22, 25, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(1000px 400px at 85% -5%, #dfe9dc 0%, transparent 70%),
+          radial-gradient(900px 380px at -10% 0%, #d9e6f4 0%, transparent 65%),
+          var(--bg);
+        line-height: 1.5;
+      }
+
+      .container {
+        width: min(1080px, 92vw);
+        margin: 0 auto;
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        backdrop-filter: blur(8px);
+        background: rgba(245, 247, 242, 0.85);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .topbar-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 0;
+      }
+
+      .brand {
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: 0.2px;
+      }
+
+      .nav {
+        display: flex;
+        gap: 18px;
+        font-size: 14px;
+      }
+
+      .nav a,
+      a {
+        color: var(--accent-2);
+        text-decoration: none;
+      }
+
+      .nav a:hover,
+      a:hover {
+        text-decoration: underline;
+      }
+
+      .hero {
+        padding: 56px 0 28px;
+      }
+
+      h1 {
+        font-size: clamp(36px, 6vw, 64px);
+        line-height: 1.05;
+        margin: 0 0 14px;
+        letter-spacing: -1.1px;
+      }
+
+      .lead {
+        color: var(--muted);
+        font-size: clamp(18px, 2.1vw, 22px);
+        max-width: 850px;
+      }
+
+      .cta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 24px;
+      }
+
+      .btn {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 10px 16px;
+        font-weight: 600;
+        border: 1px solid transparent;
+      }
+
+      .btn.primary {
+        background: var(--accent);
+        color: #fff;
+      }
+
+      .btn.secondary {
+        background: #fff;
+        border-color: var(--line);
+        color: var(--text);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 16px;
+        margin: 26px 0 34px;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px;
+        box-shadow: var(--shadow);
+      }
+
+      .card h3 {
+        margin: 0 0 6px;
+        font-size: 20px;
+      }
+
+      .card p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .span-4 {
+        grid-column: span 4;
+      }
+
+      .section {
+        margin: 32px 0;
+      }
+
+      h2 {
+        margin: 0 0 14px;
+        font-size: 30px;
+      }
+
+      h3 {
+        margin: 22px 0 10px;
+        font-size: 20px;
+      }
+
+      ul,
+      ol {
+        margin: 10px 0 0;
+        padding-left: 20px;
+      }
+
+      li {
+        margin: 6px 0;
+      }
+
+      pre {
+        margin: 12px 0 0;
+        padding: 14px;
+        border-radius: 10px;
+        background: var(--code-bg);
+        border: 1px solid var(--line);
+        overflow-x: auto;
+      }
+
+      code {
+        font-family: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
+      }
+
+      .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+
+      .footer {
+        margin: 44px 0 40px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      @media (max-width: 900px) {
+        .span-4 {
+          grid-column: span 12;
+        }
+
+        .two-col {
+          grid-template-columns: 1fr;
+        }
+
+        .nav {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <div class="brand">nvim-sandman</div>
+        <nav class="nav">
+          <a href="#quickstart">Quick Start</a>
+          <a href="#modes">Modes</a>
+          <a href="#policy">Policy</a>
+          <a href="#troubleshooting">Troubleshooting</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="hero">
+        <h1>Neovim Network Control That Stays Out of Your Way</h1>
+        <p class="lead">
+          nvim-sandman helps you block plugin network access, allow only trusted tools,
+          and audit what happened, directly inside Neovim.
+        </p>
+        <div class="cta">
+          <a class="btn primary" href="https://github.com/stasfilin/nvim-sandman">View Repository</a>
+          <a class="btn secondary" href="https://github.com/stasfilin/nvim-sandman/blob/main/README.md">Full README</a>
+          <a class="btn secondary" href="https://github.com/stasfilin/nvim-sandman/blob/main/CHANGELOG.md">Changelog</a>
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="card span-4">
+          <h3>Offline by Default</h3>
+          <p>Start in strict mode and permit only what you trust.</p>
+        </article>
+        <article class="card span-4">
+          <h3>Practical Controls</h3>
+          <p>Use commands for temporary network windows and fast allow/block changes.</p>
+        </article>
+        <article class="card span-4">
+          <h3>Policy Rules</h3>
+          <p>Add ordered allow/deny/prompt rules for exec and socket actions.</p>
+        </article>
+      </section>
+
+      <section class="section" id="quickstart">
+        <h2>Quick Start</h2>
+        <h3>Install (lazy.nvim)</h3>
+        <pre><code>{
+  'stasfilin/nvim-sandman',
+  config = function()
+    require('nvim_sandman').setup({
+      enabled = true,
+      mode = 'block_all',
+      allow = { 'lazy.nvim' },
+    })
+  end
+}</code></pre>
+        <ol>
+          <li>Start in <code>block_all</code>.</li>
+          <li>Inspect activity with <code>:Sandman stats</code>.</li>
+          <li>Add trusted plugins to <code>allow</code>.</li>
+          <li>Use <code>:Sandman temp-net 30000</code> for short exceptions.</li>
+        </ol>
+      </section>
+
+      <section class="section" id="modes">
+        <h2>Modes</h2>
+        <div class="two-col">
+          <div class="card">
+            <h3>Core Modes</h3>
+            <ul>
+              <li><code>block_all</code>: block all except <code>allow</code></li>
+              <li><code>blocklist</code>: block only listed plugins</li>
+              <li><code>allowlist</code>: allow only listed plugins</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Key Commands</h3>
+            <ul>
+              <li><code>:Sandman block</code> / <code>:Sandman unblock</code></li>
+              <li><code>:Sandman block-only &lt;p1&gt; &lt;p2&gt;</code></li>
+              <li><code>:Sandman allow-only &lt;p1&gt; &lt;p2&gt;</code></li>
+              <li><code>:Sandman stats</code> / <code>:Sandman stats-reset</code></li>
+              <li><code>:Sandman temp-net [ms]</code></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="policy">
+        <h2>Policy Engine (Optional)</h2>
+        <p>
+          Policy evaluates ordered rules and applies <code>allow</code>, <code>deny</code>,
+          or <code>prompt_once</code> decisions for <code>exec</code>/<code>socket</code>.
+        </p>
+        <ul>
+          <li><code>monitor</code>: log-only mode</li>
+          <li><code>enforce</code>: <code>deny</code> actually blocks</li>
+        </ul>
+        <pre><code>policy = {
+  enabled = true,
+  mode = 'enforce',
+  default = 'prompt_once',
+  rules = {
+    { id = 'allow-rg', action = 'exec', exe = 'rg', decision = 'allow' },
+    { id = 'deny-curl', action = 'exec', exe = 'curl', decision = 'deny' },
+    { id = 'prompt-node', action = 'exec', exe = 'node', decision = 'prompt_once' },
+  },
+}</code></pre>
+      </section>
+
+      <section class="section" id="troubleshooting">
+        <h2>Troubleshooting</h2>
+        <div class="two-col">
+          <div class="card">
+            <h3><code>blocked ... from unknown</code></h3>
+            <p>
+              Actor attribution is best-effort. Wrappers, timers, and manual <code>:lua</code>
+              paths may show as <code>unknown</code>.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Policy not blocking</h3>
+            <p>
+              Verify <code>policy.enabled = true</code>, <code>policy.mode = 'enforce'</code>,
+              and rule order/default fallback.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <p class="footer">
+        This page is built from <code>site/</code> via
+        <code>.github/workflows/pages.yml</code>.
+      </p>
+    </main>
+  </body>
+</html>

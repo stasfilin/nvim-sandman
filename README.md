@@ -27,6 +27,10 @@ second plugin that patches the same APIs.
 - Prevent accidental downloads during demos or tests.
 - Add rule-based controls for command execution (`curl`, `git`, `rg`, ...).
 
+## Requirements
+- Neovim 0.10+ for the plugin itself.
+- Neovim 0.12+ to install it with built-in `vim.pack`.
+
 ## Installation (lazy.nvim)
 ```lua
 {
@@ -38,6 +42,36 @@ second plugin that patches the same APIs.
     })
   end
 }
+```
+
+## Installation (vim.pack)
+`vim.pack` is built into Neovim 0.12+, so this method requires Neovim 0.12 or newer.
+
+```lua
+vim.pack.add({
+  {
+    src = 'https://github.com/stasfilin/nvim-sandman',
+    version = 'v1.2.1',
+  },
+})
+
+require('nvim_sandman').setup({
+  enabled = false,
+  mode = 'block_all',
+})
+```
+
+If you prefer to track the default branch instead of a tagged release:
+
+```lua
+vim.pack.add({
+  { src = 'https://github.com/stasfilin/nvim-sandman' },
+})
+
+require('nvim_sandman').setup({
+  enabled = false,
+  mode = 'block_all',
+})
 ```
 
 ## Quickstart

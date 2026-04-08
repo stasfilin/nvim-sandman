@@ -32,6 +32,37 @@ It is useful for offline workflows, security hardening, and reproducible session
 }
 ```
 
+### vim.pack
+
+`vim.pack` requires Neovim 0.12+.
+
+```lua
+vim.pack.add({
+  {
+    src = 'https://github.com/stasfilin/nvim-sandman',
+    version = 'v1.2.1',
+  },
+})
+
+require('nvim_sandman').setup({
+  enabled = true,
+  mode = 'block_all',
+})
+```
+
+To follow the default branch instead of a tagged release:
+
+```lua
+vim.pack.add({
+  { src = 'https://github.com/stasfilin/nvim-sandman' },
+})
+
+require('nvim_sandman').setup({
+  enabled = true,
+  mode = 'block_all',
+})
+```
+
 ## Quick Start
 
 ```lua
