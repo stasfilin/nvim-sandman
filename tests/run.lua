@@ -117,6 +117,11 @@ local function load_core()
   return require('nvim_sandman.core')
 end
 
+local function load_policy_engine()
+  package.loaded['nvim_sandman.policy.engine'] = nil
+  return require('nvim_sandman.policy.engine')
+end
+
 local function assert_eq(actual, expected, msg)
   if actual ~= expected then
     error(string.format('%s\nexpected: %s\nactual: %s', msg, tostring(expected), tostring(actual)))
@@ -330,6 +335,102 @@ test('file stats storage persists between setup calls', function()
 
   assert_eq(core_reloaded.stats().total.attempts, 1, 'second session should restore attempts from file')
   os.remove(stats_path)
+end)
+
+test('policy actor literal with hyphen matches exactly', function()
+  reset_vim()
+  local engine = load_policy_engine()
+
+  local result = engine.evaluate({
+    action = 'exec',
+    actor = 'fzf-lua',
+    exe = 'fzf',
+    args = {},
+    target = 'fzf --version',
+  }, {
+    default = 'prompt_once',
+    rules = {
+      { id = 'allow-fzf', action = 'exec', actor = 'fzf-lua', decision = 'allow' },
+    },
+  })
+
+  assert_eq(result.decision, 'allow', 'literal actor rule should match exact hyphenated actor name')
+  assert_eq(result.rule_id, 'allow-fzf', 'literal actor rule should win over default policy')
+end)
+
+test('policy exact actor match wins without legacy warning', function()
+  reset_vim()
+  local engine = load_policy_engine()
+  local warned = nil
+  vim.notify = function(message, level)
+    warned = { message = message, level = level }
+  end
+
+  local result = engine.evaluate({
+    action = 'exec',
+    actor = 'fzf-lua',
+    exe = 'git',
+    args = {},
+    target = 'git fetch',
+  }, {
+    default = 'prompt_once',
+    rules = {
+      { id = 'allow-fzf', action = 'exec', actor = 'fzf-lua', decision = 'allow' },
+    },
+  })
+
+  assert_eq(result.decision, 'allow', 'exact actor match should still succeed')
+  assert_eq(result.rule_id, 'allow-fzf', 'exact actor rule should match directly')
+  assert_eq(warned, nil, 'exact actor match should not emit legacy compatibility warning')
+end)
+
+test('policy actor_pattern matches by lua pattern', function()
+  reset_vim()
+  local engine = load_policy_engine()
+
+  local result = engine.evaluate({
+    action = 'exec',
+    actor = 'nvim-treesitter',
+    exe = 'git',
+    args = {},
+    target = 'git fetch',
+  }, {
+    default = 'prompt_once',
+    rules = {
+      { id = 'allow-treesitter', action = 'exec', actor_pattern = 'nvim%-tree.*', decision = 'allow' },
+    },
+  })
+
+  assert_eq(result.decision, 'allow', 'actor_pattern should support lua pattern matching')
+  assert_eq(result.rule_id, 'allow-treesitter', 'actor_pattern rule should match request actor')
+end)
+
+test('policy legacy actor pattern remains compatible with warning', function()
+  reset_vim()
+  local warned = nil
+  vim.notify = function(message, level)
+    warned = { message = message, level = level }
+  end
+
+  local engine = load_policy_engine()
+
+  local result = engine.evaluate({
+    action = 'exec',
+    actor = 'nvim-treesitter',
+    exe = 'git',
+    args = {},
+    target = 'git fetch',
+  }, {
+    default = 'prompt_once',
+    rules = {
+      { id = 'legacy-treesitter', action = 'exec', actor = 'nvim%-tree.*', decision = 'allow' },
+    },
+  })
+
+  assert_eq(result.decision, 'allow', 'legacy actor pattern should remain supported for compatibility')
+  assert_eq(result.rule_id, 'legacy-treesitter', 'legacy actor pattern should still match request actor')
+  assert_eq(type(warned), 'table', 'legacy actor pattern should emit deprecation warning')
+  assert_eq(warned.level, vim.log.levels.WARN, 'legacy actor pattern warning should use WARN level')
 end)
 
 local passed = 0
